@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+
+# Environment Variables (CRITICAL SECURITY)
+.env
+.env.backup
+.env.local
+
+# Database
+*.sqlite
+*.db
+
+# Logs
+logs/
+*.log
+
+# OS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+
+# Node.js (frontend)
+node_modules/
+.next/
+out/
+
+# Media output
+output/
+*.png
+*.mp4
+*.mp3
+*.wav
+
+# Docker
+docker-data/

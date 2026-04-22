@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1080, height=1080">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&display=swap" rel="stylesheet">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  --navy:   #0F172A;
+  --blue:   #3B82F6;
+  --sky:    #93C5FD;
+  --coral:  #F97316;
+  --white:  #FFFFFF;
+  --gray:   #94A3B8;
+  --light:  #F8FAFC;
+}
+
+body {
+  width: 1080px;
+  height: 1080px;
+  font-family: 'Noto Sans KR', 'Apple SD Gothic Neo', sans-serif;
+  overflow: hidden;
+  position: relative;
+}
+
+/* ── 훅 슬라이드 (1번, 7번) ── */
+.slide-hook {
+  background: linear-gradient(145deg, var(--navy) 0%, #1E3A5F 60%, #0F3460 100%);
+  color: var(--white);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 80px;
+  text-align: center;
+}
+
+.slide-hook .category-badge {
+  background: var(--blue);
+  color: var(--white);
+  font-size: 26px;
+  font-weight: 700;
+  padding: 10px 28px;
+  border-radius: 50px;
+  margin-bottom: 50px;
+  letter-spacing: 1px;
+}
+
+.slide-hook .main-text {
+  font-size: 62px;
+  font-weight: 900;
+  line-height: 1.3;
+  margin-bottom: 40px;
+  word-break: keep-all;
+}
+
+.slide-hook .sub-text {
+  font-size: 30px;
+  font-weight: 400;
+  color: var(--sky);
+  line-height: 1.6;
+  word-break: keep-all;
+}
+
+/* ── 콘텐츠 슬라이드 (2~6번) ── */
+.slide-content {
+  background: var(--light);
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+}
+
+.slide-content .top-bar {
+  background: var(--navy);
+  padding: 32px 60px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.slide-content .top-bar .handle {
+  color: var(--sky);
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+
+.slide-content .top-bar .slide-num {
+  color: var(--gray);
+  font-size: 24px;
+}
+
+.slide-content .body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 60px 80px;
+}
+
+.slide-content .point-number {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--blue);
+  margin-bottom: 24px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+
+.slide-content .content-text {
+  font-size: 46px;
+  font-weight: 700;
+  color: var(--navy);
+  line-height: 1.5;
+  word-break: keep-all;
+  margin-bottom: 36px;
+}
+
+.slide-content .detail-text {
+  font-size: 32px;
+  font-weight: 400;
+  color: #334155;
+  line-height: 1.7;
+  word-break: keep-all;
+}
+
+.slide-content .accent-line {
+  width: 60px;
+  height: 5px;
+  background: var(--coral);
+  border-radius: 3px;
+  margin-bottom: 40px;
+}
+
+.slide-content .bottom-bar {
+  background: var(--navy);
+  padding: 24px 60px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.slide-content .dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #334155;
+}
+
+.slide-content .dot.active {
+  background: var(--blue);
+  width: 32px;
+  border-radius: 6px;
+}
+
+/* ── CTA 슬라이드 (7번) 추가 요소 ── */
+.slide-hook .cta-box {
+  margin-top: 50px;
+  border: 2px solid var(--sky);
+  border-radius: 16px;
+  padding: 24px 48px;
+  font-size: 28px;
+  font-weight: 500;
+  color: var(--sky);
+}
+
+/* ── 공통 하단 워터마크 ── */
+.watermark {
+  position: absolute;
+  bottom: 30px;
+  right: 48px;
+  font-size: 22px;
+  font-weight: 700;
+  color: rgba(255,255,255,0.35);
+  letter-spacing: 1px;
+}
+
+.watermark-dark {
+  position: absolute;
+  bottom: 80px;
+  right: 60px;
+  font-size: 22px;
+  font-weight: 700;
+  color: rgba(15,23,42,0.25);
+  letter-spacing: 1px;
+}
+
+/* ── AI 생성 표기 ── */
+.ai-badge {
+  position: absolute;
+  bottom: 30px;
+  left: 48px;
+  font-size: 20px;
+  color: rgba(255,255,255,0.3);
+}
+
+.ai-badge-dark {
+  position: absolute;
+  bottom: 80px;
+  left: 60px;
+  font-size: 20px;
+  color: rgba(15,23,42,0.2);
+}
+</style>
+</head>
+<body>
+
+{% if slide_type == "hook" %}
+<!-- 훅 슬라이드 (1번) -->
+<div class="slide-hook">
+  <div class="category-badge">{{ category }}</div>
+  <div class="main-text">{{ main_text }}</div>
+  {% if sub_text %}
+  <div class="sub-text">{{ sub_text }}</div>
+  {% endif %}
+  <div class="watermark">@allai0011</div>
+  <div class="ai-badge">🤖 AI 생성</div>
+</div>
+
+{% elif slide_type == "cta" %}
+<!-- CTA 슬라이드 (마지막) -->
+<div class="slide-hook">
+  <div class="category-badge">{{ category }}</div>
+  <div class="main-text">{{ main_text }}</div>
+  <div class="cta-box">{{ cta_text }}</div>
+  <div class="watermark">@allai0011</div>
+  <div class="ai-badge">🤖 AI 생성</div>
+</div>
+
+{% else %}
+<!-- 콘텐츠 슬라이드 (2~6번) -->
+<div class="slide-content">
+  <div class="top-bar">
+    <span class="handle">@allai0011</span>
+    <span class="slide-num">{{ slide_index }} / {{ total_slides }}</span>
+  </div>
+
+  <div class="body">
+    <div class="point-number">POINT {{ point_num }}</div>
+    <div class="accent-line"></div>
+    <div class="content-text">{{ content_title }}</div>
+    <div class="detail-text">{{ detail_text }}</div>
+  </div>
+
+  <div class="bottom-bar">
+    {% for i in range(total_slides) %}
+    <div class="dot {% if i == slide_index - 1 %}active{% endif %}"></div>
+    {% endfor %}
+  </div>
+
+  <div class="watermark-dark">@allai0011</div>
+  <div class="ai-badge-dark">🤖 AI 생성</div>
+</div>
+{% endif %}
+
+</body>
+</html>

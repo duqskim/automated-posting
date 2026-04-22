@@ -1,0 +1,49 @@
+# === LLM ===
+google-generativeai==0.8.3
+anthropic
+openai
+
+# === Web Framework ===
+fastapi
+uvicorn[standard]
+python-multipart
+
+# === Auth ===
+pyjwt
+passlib[bcrypt]
+
+# === Database ===
+sqlalchemy[asyncio]
+asyncpg
+alembic
+
+# === Task Queue ===
+celery[redis]
+redis
+
+# === SNS 트렌드 수집 (shadow-meteorite 이전) ===
+pytrends==4.9.2
+tweepy==4.14.0
+praw==7.7.1
+feedparser==6.0.11
+yfinance==0.2.54
+requests==2.32.3
+
+# === 이미지/영상 ===
+cloudinary==1.40.0
+playwright
+jinja2
+moviepy
+Pillow
+
+# === 음성 (ElevenLabs) ===
+elevenlabs
+
+# === 유틸리티 ===
+pydantic==2.10.6
+pydantic-settings
+loguru==0.7.3
+python-dotenv==1.0.1
+pytz
+pyyaml
+httpx
