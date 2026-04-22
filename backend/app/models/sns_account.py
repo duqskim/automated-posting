@@ -1,5 +1,5 @@
 """SNS 계정 모델 — 사용자별, 시장별 SNS 계정 관리"""
-from sqlalchemy import String, Integer, ForeignKey, DateTime, Boolean, Text
+from sqlalchemy import String, ForeignKey, DateTime, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin

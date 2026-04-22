@@ -1,5 +1,5 @@
 """프로젝트 모델 — 주제 하나 = 프로젝트 하나"""
-from sqlalchemy import String, Integer, ForeignKey, Text, JSON
+from sqlalchemy import String, ForeignKey, Text, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin

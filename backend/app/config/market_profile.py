@@ -7,7 +7,7 @@ from functools import lru_cache
 from typing import Literal
 
 import yaml
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 MarketCode = Literal["kr", "us", "jp"]
 
