@@ -1,0 +1,109 @@
+market: kr
+language: ko
+display_name: "한국"
+
+# 콘텐츠 톤 & 스타일
+tone: "친근한 존댓말 (~해요체), 전문용어 최소화, 진정성 있는 정보 전달"
+hook_style: "collective"  # 집단 공감형
+hook_examples:
+  - "직장인 87%가 놓치는 {topic}"
+  - "대부분이 모르는 {topic}의 진실"
+  - "6개월 만에 {result} 만든 방법"
+  - "{topic}, 이 실수 하면 수백만원 날립니다"
+  - "지금 안 하면 늦는 {topic} 핵심 정리"
+info_density: high
+slide_text_limit_chars: 60
+caption_style: "structured"  # 줄바꿈 + 이모지 마커로 구조화
+
+# 플랫폼
+platforms:
+  primary:
+    - instagram
+    - youtube
+    - youtube_shorts
+  secondary:
+    - threads
+    - naver_blog
+  optional:
+    - x
+    - kakaotalk_channel
+    - facebook
+
+# 리서치 소스
+research_sources:
+  - type: google_trends
+    region: KR
+    language: ko
+  - type: youtube_search
+    region: KR
+    language: ko
+  - type: instagram_hashtag
+    language: ko
+  - type: naver_datalab
+  - type: korean_news_rss
+    feeds:
+      - name: 한국경제 경제
+        url: "https://www.hankyung.com/feed/economy"
+      - name: 한국경제 IT
+        url: "https://www.hankyung.com/feed/it"
+      - name: 매경 IT
+        url: "https://www.mk.co.kr/rss/30000001/"
+      - name: 테크42
+        url: "https://www.tech42.co.kr/feed"
+
+# SEO
+seo_engine: naver
+sharing_optimization: kakaotalk
+
+# 해시태그
+hashtag:
+  count: 5
+  language: korean
+  mix: "대형 1~2개 + 중소형 2~3개 (1만~20만)"
+
+# 콘텐츠 규칙
+content_rules:
+  disclaimer_finance: "⚠️ 본 콘텐츠는 참고용이며 투자 권유가 아닙니다"
+  ai_disclosure: "🤖 AI 생성 콘텐츠 | 인공지능 기본법 준수"
+  trend_window_hours: 48
+
+# 썸네일
+thumbnail:
+  style: text_heavy
+  text_ratio: 0.4
+  preferred_colors: ["#1a1a2e", "#16213e", "#0f3460", "#e94560"]
+
+# 발행 시간 (KST)
+posting_hours:
+  instagram:
+    best: ["21:00"]
+    good: ["11:00", "13:00"]
+  youtube:
+    best: ["18:00"]
+    good: ["14:00", "20:00"]
+  x:
+    best: ["08:00", "12:00"]
+    good: ["21:00"]
+
+# AI 티 검출 규칙 (Quality Gate용)
+ai_detection:
+  banned_patterns:
+    - "더불어"
+    - "이에 따라"
+    - "한편"
+    - "여러분의 성공을 응원합니다"
+    - "~해 보시기 바랍니다"
+    - "않을까 싶습니다"
+  formal_to_casual:
+    "입니다": "이에요"
+    "합니다": "해요"
+    "됩니다": "돼요"
+    "있습니다": "있어요"
+    "것입니다": "거예요"
+  require_specific_numbers: true  # "약 50%" → "47.3%" 강제
+
+# KPI 우선순위
+kpi_priority:
+  instagram: [saves, dm_shares, comments, likes]
+  youtube: [watch_time, ctr, subscriber_conversion]
+  x: [bookmarks, replies, retweets]

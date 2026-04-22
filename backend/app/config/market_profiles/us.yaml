@@ -1,0 +1,145 @@
+market: us
+language: en
+display_name: "North America"
+
+# 콘텐츠 톤 & 스타일
+tone: "Casual, first-person, conversational. Self-deprecating humor OK. Authenticity over polish."
+hook_style: "personal"  # 개인 내러티브형
+hook_examples:
+  - "I spent 6 months testing {topic}. Here's what actually works."
+  - "Stop doing {common_mistake}. Here's why."
+  - "Unpopular opinion: {contrarian_take}"
+  - "Nobody talks about this {topic} strategy"
+  - "I lost ${amount} learning this so you don't have to"
+info_density: low
+slide_text_limit_words: 12
+caption_style: "storytelling"  # 스토리텔링 또는 마이크로 (1~2문장)
+
+# 플랫폼
+platforms:
+  primary:
+    - youtube
+    - linkedin
+    - instagram
+  secondary:
+    - newsletter  # Beehiiv/Substack
+    - youtube_shorts
+    - reddit
+  optional:
+    - tiktok
+    - pinterest
+    - threads
+    - x
+
+# 리서치 소스
+research_sources:
+  - type: google_trends
+    region: US
+    language: en
+  - type: youtube_search
+    region: US
+    language: en
+  - type: instagram_hashtag
+    language: en
+  - type: reddit_trending
+    subreddits:
+      - r/personalfinance
+      - r/investing
+      - r/artificial
+      - r/ChatGPT
+      - r/stocks
+      - r/technology
+  - type: hacker_news
+  - type: rss_feeds
+    feeds:
+      - name: TechCrunch
+        url: "https://techcrunch.com/feed/"
+      - name: The Verge
+        url: "https://www.theverge.com/rss/index.xml"
+      - name: Ars Technica
+        url: "https://feeds.arstechnica.com/arstechnica/index"
+      - name: CNBC Finance
+        url: "https://www.cnbc.com/id/100003114/device/rss/rss.html"
+
+# SEO
+seo_engine: google
+sharing_optimization: email_dm
+
+# 해시태그
+hashtag:
+  count: 3
+  language: english
+  mix: "highly relevant only, trending if applicable"
+  note: "Instagram deprioritized hashtags in 2025. Focus on caption keywords + alt text."
+
+# 콘텐츠 규칙
+content_rules:
+  disclaimer_finance: "⚠️ Not financial advice. Do your own research."
+  ai_disclosure: "Generated with AI assistance"
+  trend_window_hours: 120  # 북미 트렌드 주기 더 길음
+
+# 썸네일
+thumbnail:
+  style: face_plus_text
+  text_ratio: 0.25
+  preferred_colors: ["#FF0000", "#FFFFFF", "#000000", "#FFD700"]
+  note: "MrBeast style: expressive face + 3-4 word text + bright colors"
+
+# 발행 시간 (EST, KST 변환 포함)
+timezone: America/New_York
+posting_hours:
+  youtube:
+    best: ["17:00"]       # KST 07:00
+    good: ["12:00", "15:00"]  # KST 02:00, 05:00
+  linkedin:
+    best: ["08:00", "10:00"]  # KST 22:00, 00:00
+    good: ["12:00"]           # KST 02:00
+  instagram:
+    best: ["11:00", "14:00"]  # KST 01:00, 04:00
+    good: ["19:00"]           # KST 09:00
+  newsletter:
+    best: ["07:00"]           # KST 21:00 (전날)
+    good: ["10:00"]           # KST 00:00
+
+# AI 티 검출 규칙 (Quality Gate용)
+ai_detection:
+  banned_patterns:
+    - "In today's rapidly evolving"
+    - "It's important to note that"
+    - "In conclusion"
+    - "Let's dive in"
+    - "Without further ado"
+    - "game-changer"
+    - "paradigm shift"
+    - "leverage"
+    - "synergy"
+    - "at the end of the day"
+  style_rules:
+    - "Avoid starting with 'In this post' or 'Today we will'"
+    - "Use contractions (don't, won't, can't)"
+    - "Vary sentence length — mix short punchy with longer explanatory"
+    - "Use specific numbers (47.3% not 'about 50%')"
+    - "Start with a story or surprising fact, never a definition"
+  require_specific_numbers: true
+
+# KPI 우선순위
+kpi_priority:
+  youtube: [watch_time, ctr, subscriber_conversion]
+  linkedin: [engagement_rate, comments, shares, profile_visits]
+  instagram: [saves, shares, comments]
+  newsletter: [open_rate, click_rate, subscriber_growth]
+  reddit: [upvotes, comment_quality, profile_visits]
+
+# LinkedIn 전용 설정
+linkedin:
+  post_style: "text_only"  # 이미지보다 텍스트 포스트가 도달 높음
+  max_length: 1300  # characters
+  use_line_breaks: true
+  emoji_usage: "minimal"  # LinkedIn은 이모지 과용 시 비전문적
+  hook_in_first_line: true  # "더 보기" 전 첫 줄이 전부
+
+# Reddit 전용 설정
+reddit:
+  mode: "participation"  # 자기 홍보 ✕, 진정한 참여
+  comment_first: true  # 포스트보다 댓글로 먼저 신뢰 구축
+  self_promo_ratio: "10:1"  # 10개 진정한 참여당 1개 자기 콘텐츠

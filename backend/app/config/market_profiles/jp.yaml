@@ -1,0 +1,101 @@
+market: jp
+language: ja
+display_name: "日本"
+
+# 콘텐츠 톤 & 스타일
+tone: "丁寧語 (ですます体), わかりやすく, 専門用語は必ず説明を添える"
+hook_style: "discovery"  # 발견형
+hook_examples:
+  - "知らないと損する{topic}の真実"
+  - "実は{topic}には裏ワザがあった"
+  - "{topic}を始める前に知っておくべき3つのこと"
+  - "99%の人が間違えている{topic}"
+  - "プロが教える{topic}の本当のやり方"
+info_density: medium
+slide_text_limit_chars: 45
+caption_style: "structured"
+
+# 플랫폼
+platforms:
+  primary:
+    - youtube
+    - instagram
+    - x
+  secondary:
+    - tiktok
+    - note_com
+  optional:
+    - threads
+    - line
+
+# 리서치 소스
+research_sources:
+  - type: google_trends
+    region: JP
+    language: ja
+  - type: youtube_search
+    region: JP
+    language: ja
+  - type: x_trends
+    region: JP
+  - type: rss_feeds
+    feeds:
+      - name: ITmedia
+        url: "https://rss.itmedia.co.jp/rss/2.0/itmedia_all.xml"
+      - name: GIGAZINE
+        url: "https://gigazine.net/news/rss_2.0/"
+      - name: note.com テクノロジー
+        url: "https://note.com/topic/technology/rss"
+
+# SEO
+seo_engine: google_jp
+sharing_optimization: line
+
+# 해시태그
+hashtag:
+  count: 5
+  language: japanese
+  mix: "トレンド系 2個 + ニッチ系 3個"
+
+# 콘텐츠 규칙
+content_rules:
+  disclaimer_finance: "⚠️ 本コンテンツは情報提供のみを目的としており、投資助言ではありません"
+  ai_disclosure: "🤖 AI生成コンテンツ"
+  trend_window_hours: 72
+
+# 썸네일
+thumbnail:
+  style: text_plus_illustration
+  text_ratio: 0.35
+  preferred_colors: ["#e74c3c", "#ffffff", "#2c3e50", "#f39c12"]
+
+# 발행 시간 (JST, KST와 동일 시간대)
+timezone: Asia/Tokyo
+posting_hours:
+  youtube:
+    best: ["19:00"]
+    good: ["12:00", "21:00"]
+  instagram:
+    best: ["21:00"]
+    good: ["12:00", "18:00"]
+  x:
+    best: ["07:00", "12:00"]
+    good: ["20:00"]
+
+# AI 티 검출 규칙
+ai_detection:
+  banned_patterns:
+    - "～と言えるでしょう"
+    - "いかがでしたでしょうか"
+    - "まとめ：今回は"
+    - "～について解説しました"
+  style_rules:
+    - "「です・ます」体を基本にする"
+    - "一文は60文字以内を目安に"
+    - "具体的な数字を使う（約50%→47.3%）"
+
+# KPI 우선순위
+kpi_priority:
+  youtube: [watch_time, subscriber_conversion, comments]
+  instagram: [saves, shares, comments]
+  x: [retweets, bookmarks, replies]
