@@ -202,19 +202,24 @@ sensitive_events      -- 민감 이벤트 로그
 
 ## 구현 순서
 
-### Phase 1 (1~2주): 기반
+### Phase 1 (1~2주): 기반 ✅
 - 모노레포 (backend + frontend)
 - Docker Compose + DB 마이그레이션
 - 인증 (JWT)
-- Market Profile 시스템
-- SNS 계정 연결
+- Market Profile 시스템 (KR/US/JP)
+- SNS 계정 관리 API
+- LLM 추상 레이어 (Claude + Gemini)
+- 개발/검수 에이전트 (Linter, Tester, Reviewer, Ship Agent)
 
-### Phase 2 (3~4주): 리서치 + 글쓰기
-- LLM 추상 레이어
-- Researcher + Hooksmith + Copywriter
-- Quality Gate
-- Celery 연동
-- UI: 주제 입력 → 리서치 리뷰 → 콘텐츠 편집
+### Phase 2 (3~4주): 리서치 + 글쓰기 ✅
+- Researcher Agent (주제 기반 동적 리서치, 키워드 확장, 상위 콘텐츠 분석)
+- Hooksmith Agent (훅 3~5개 생성, 썸네일 카피)
+- Copywriter Agent (플랫폼별 독립 콘텐츠 생성, 10개 플랫폼 포맷 지원)
+- Quality Gate (AI 티 검출, 훅 강도 점수, 팩트 체크, 민감 키워드 필터)
+- Pipeline Controller (에이전트 오케스트레이션, 실패 시 1회 재생성)
+- Pipeline API (리서치/전체 실행/미리보기)
+- Celery 연동: 미구현 (다음)
+- UI: 미구현 (다음)
 
 ### Phase 3 (5~6주): 미디어
 - Art Director (이미지/썸네일)

@@ -11,6 +11,7 @@ from app.models.base import engine, Base
 from app.auth.router import router as auth_router
 from app.api.accounts import router as accounts_router
 from app.api.projects import router as projects_router
+from app.api.pipeline import router as pipeline_router
 
 
 @asynccontextmanager
@@ -45,6 +46,7 @@ app.add_middleware(
 app.include_router(auth_router)
 app.include_router(accounts_router)
 app.include_router(projects_router)
+app.include_router(pipeline_router)
 
 
 @app.get("/api/health")
