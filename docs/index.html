@@ -1,0 +1,833 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Automated Posting — UX Prototype</title>
+<style>
+:root {
+  --bg: #0f0f13;
+  --surface: #1a1a24;
+  --surface2: #252533;
+  --border: #333345;
+  --text: #e8e8f0;
+  --text2: #9999aa;
+  --accent: #6366f1;
+  --accent2: #818cf8;
+  --green: #22c55e;
+  --red: #ef4444;
+  --orange: #f59e0b;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  font-family: -apple-system, 'Pretendard', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+}
+.app { display: flex; min-height: 100vh; }
+
+/* Sidebar */
+.sidebar {
+  width: 260px;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  padding: 20px 0;
+  flex-shrink: 0;
+}
+.sidebar .logo {
+  padding: 0 20px 24px;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--accent2);
+}
+.sidebar .logo span { color: var(--text2); font-weight: 400; font-size: 12px; display: block; margin-top: 4px; }
+.nav-item {
+  padding: 12px 20px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--text2);
+  font-size: 14px;
+  transition: all 0.15s;
+}
+.nav-item:hover { background: var(--surface2); color: var(--text); }
+.nav-item.active { background: var(--accent)22; color: var(--accent2); border-right: 3px solid var(--accent); }
+.nav-icon { font-size: 18px; width: 24px; text-align: center; }
+.nav-divider { height: 1px; background: var(--border); margin: 12px 20px; }
+.user-box {
+  position: absolute;
+  bottom: 0;
+  width: 260px;
+  padding: 16px 20px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.user-avatar {
+  width: 32px; height: 32px; border-radius: 50%;
+  background: var(--accent); display: flex; align-items: center;
+  justify-content: center; font-size: 14px; font-weight: 600;
+}
+.user-name { font-size: 13px; }
+.user-email { font-size: 11px; color: var(--text2); }
+
+/* Main */
+.main { flex: 1; padding: 32px; overflow-y: auto; }
+.page-title { font-size: 24px; font-weight: 700; margin-bottom: 8px; }
+.page-sub { color: var(--text2); font-size: 14px; margin-bottom: 32px; }
+
+/* Cards */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 24px;
+  margin-bottom: 20px;
+}
+.card-title { font-size: 16px; font-weight: 600; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+
+/* New Project Form */
+.form-group { margin-bottom: 20px; }
+.form-label { font-size: 13px; color: var(--text2); margin-bottom: 8px; display: block; }
+.form-input {
+  width: 100%;
+  padding: 12px 16px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 15px;
+  outline: none;
+}
+.form-input:focus { border-color: var(--accent); }
+.form-input::placeholder { color: var(--text2); }
+
+/* Market Select */
+.market-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.market-card {
+  padding: 16px;
+  background: var(--surface2);
+  border: 2px solid var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+  text-align: center;
+  transition: all 0.15s;
+}
+.market-card:hover { border-color: var(--accent); }
+.market-card.selected { border-color: var(--accent); background: var(--accent)15; }
+.market-flag { font-size: 32px; margin-bottom: 8px; }
+.market-name { font-size: 14px; font-weight: 600; }
+.market-lang { font-size: 11px; color: var(--text2); margin-top: 4px; }
+
+/* Platform Tags */
+.platform-tags { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.platform-tag {
+  padding: 6px 12px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.platform-tag.active { background: var(--accent)30; border-color: var(--accent); color: var(--accent2); }
+.platform-tag:hover { border-color: var(--accent); }
+
+/* Buttons */
+.btn {
+  padding: 12px 24px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  transition: all 0.15s;
+}
+.btn-primary { background: var(--accent); color: white; }
+.btn-primary:hover { background: var(--accent2); }
+.btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text); }
+.btn-outline:hover { border-color: var(--accent); }
+.btn-sm { padding: 8px 16px; font-size: 13px; }
+
+/* Pipeline Progress */
+.pipeline-steps { display: flex; gap: 4px; margin: 20px 0; }
+.step {
+  flex: 1;
+  padding: 12px;
+  background: var(--surface2);
+  border-radius: 8px;
+  text-align: center;
+  font-size: 11px;
+  color: var(--text2);
+  position: relative;
+}
+.step.active { background: var(--accent)30; color: var(--accent2); }
+.step.done { background: var(--green)20; color: var(--green); }
+.step.fail { background: var(--red)20; color: var(--red); }
+.step-icon { font-size: 20px; margin-bottom: 4px; }
+.step-label { font-size: 10px; }
+
+/* Project List */
+.project-row {
+  display: flex;
+  align-items: center;
+  padding: 16px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.project-row:hover { background: var(--surface2); }
+.project-topic { flex: 1; font-size: 14px; font-weight: 500; }
+.project-meta { display: flex; gap: 12px; align-items: center; }
+.badge {
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.badge-kr { background: #3b82f620; color: #60a5fa; }
+.badge-us { background: #f59e0b20; color: #fbbf24; }
+.badge-pass { background: #22c55e20; color: #4ade80; }
+.badge-progress { background: #f59e0b20; color: #fbbf24; }
+.badge-draft { background: #6b728020; color: #9ca3af; }
+
+/* Content Preview */
+.preview-tabs { display: flex; gap: 0; border-bottom: 1px solid var(--border); margin-bottom: 20px; }
+.preview-tab {
+  padding: 10px 20px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text2);
+  border-bottom: 2px solid transparent;
+}
+.preview-tab.active { color: var(--accent2); border-bottom-color: var(--accent); }
+.slide-preview {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+}
+.slide-card {
+  aspect-ratio: 1;
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+  border-radius: 8px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  font-size: 12px;
+  color: #ddd;
+  position: relative;
+}
+.slide-card .slide-num {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  font-size: 10px;
+  color: #888;
+}
+.slide-card .slide-hook {
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+/* SNS Accounts */
+.account-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
+.account-card {
+  padding: 20px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.account-platform { font-size: 13px; font-weight: 600; margin-bottom: 4px; display: flex; align-items: center; gap: 8px; }
+.account-handle { font-size: 12px; color: var(--text2); }
+.account-status { margin-top: 12px; font-size: 11px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 4px; }
+.dot-green { background: var(--green); }
+.dot-gray { background: #666; }
+
+/* Feedback */
+.feedback-bar {
+  position: fixed;
+  bottom: 0;
+  left: 260px;
+  right: 0;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  padding: 12px 32px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  z-index: 100;
+}
+.feedback-input {
+  flex: 1;
+  padding: 10px 16px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 13px;
+  outline: none;
+}
+.feedback-input:focus { border-color: var(--accent); }
+
+/* Pages */
+.page { display: none; }
+.page.active { display: block; }
+
+/* Responsive */
+@media (max-width: 768px) {
+  .sidebar { display: none; }
+  .main { padding: 16px; }
+  .market-grid { grid-template-columns: 1fr; }
+  .pipeline-steps { flex-wrap: wrap; }
+  .feedback-bar { left: 0; }
+  .slide-preview { grid-template-columns: repeat(2, 1fr); }
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- Sidebar -->
+  <div class="sidebar">
+    <div class="logo">
+      Automated Posting
+      <span>v0.1 — UX Prototype</span>
+    </div>
+    <div class="nav-item active" onclick="showPage('dashboard')">
+      <span class="nav-icon">📊</span> 대시보드
+    </div>
+    <div class="nav-item" onclick="showPage('new-project')">
+      <span class="nav-icon">✨</span> 새 프로젝트
+    </div>
+    <div class="nav-item" onclick="showPage('projects')">
+      <span class="nav-icon">📁</span> 프로젝트 목록
+    </div>
+    <div class="nav-divider"></div>
+    <div class="nav-item" onclick="showPage('pipeline')">
+      <span class="nav-icon">⚡</span> 파이프라인
+    </div>
+    <div class="nav-item" onclick="showPage('preview')">
+      <span class="nav-icon">👁</span> 콘텐츠 미리보기
+    </div>
+    <div class="nav-divider"></div>
+    <div class="nav-item" onclick="showPage('accounts')">
+      <span class="nav-icon">🔗</span> SNS 계정
+    </div>
+    <div class="nav-item" onclick="showPage('analytics')">
+      <span class="nav-icon">📈</span> 분석
+    </div>
+    <div class="nav-item" onclick="showPage('settings')">
+      <span class="nav-icon">⚙️</span> 설정
+    </div>
+    <div class="user-box">
+      <div class="user-avatar">S</div>
+      <div>
+        <div class="user-name">Sol</div>
+        <div class="user-email">sol@example.com</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main Content -->
+  <div class="main">
+
+    <!-- Dashboard -->
+    <div id="page-dashboard" class="page active">
+      <div class="page-title">대시보드</div>
+      <div class="page-sub">콘텐츠 파이프라인 현황</div>
+
+      <div style="display:grid; grid-template-columns: repeat(4,1fr); gap:16px; margin-bottom:32px;">
+        <div class="card" style="text-align:center;">
+          <div style="font-size:32px; font-weight:700; color:var(--accent2);">3</div>
+          <div style="font-size:12px; color:var(--text2); margin-top:4px;">진행 중</div>
+        </div>
+        <div class="card" style="text-align:center;">
+          <div style="font-size:32px; font-weight:700; color:var(--green);">12</div>
+          <div style="font-size:12px; color:var(--text2); margin-top:4px;">발행 완료</div>
+        </div>
+        <div class="card" style="text-align:center;">
+          <div style="font-size:32px; font-weight:700; color:var(--orange);">5</div>
+          <div style="font-size:12px; color:var(--text2); margin-top:4px;">리뷰 대기</div>
+        </div>
+        <div class="card" style="text-align:center;">
+          <div style="font-size:32px; font-weight:700;">2</div>
+          <div style="font-size:12px; color:var(--text2); margin-top:4px;">시장</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">최근 프로젝트</div>
+        <div class="project-row" onclick="showPage('pipeline')">
+          <div class="project-topic">ISA 계좌 절세 전략 2025</div>
+          <div class="project-meta">
+            <span class="badge badge-kr">🇰🇷 한국</span>
+            <span class="badge badge-pass">발행 완료</span>
+          </div>
+        </div>
+        <div class="project-row" onclick="showPage('pipeline')">
+          <div class="project-topic">Top 5 AI Tools for Productivity</div>
+          <div class="project-meta">
+            <span class="badge badge-us">🇺🇸 북미</span>
+            <span class="badge badge-progress">미디어 제작 중</span>
+          </div>
+        </div>
+        <div class="project-row" onclick="showPage('pipeline')">
+          <div class="project-topic">ETF vs 개별주식, 뭐가 나을까?</div>
+          <div class="project-meta">
+            <span class="badge badge-kr">🇰🇷 한국</span>
+            <span class="badge badge-draft">리뷰 대기</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- New Project -->
+    <div id="page-new-project" class="page">
+      <div class="page-title">새 프로젝트</div>
+      <div class="page-sub">주제를 입력하고 시장을 선택하세요</div>
+
+      <div class="card">
+        <div class="form-group">
+          <label class="form-label">주제 *</label>
+          <input class="form-input" placeholder="예: ISA 계좌 절세 전략, Top AI tools for 2025..." id="topic-input">
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">시장 선택 *</label>
+          <div class="market-grid">
+            <div class="market-card selected" onclick="selectMarket(this, 'kr')">
+              <div class="market-flag">🇰🇷</div>
+              <div class="market-name">한국</div>
+              <div class="market-lang">한국어 · IG, YT, Threads</div>
+            </div>
+            <div class="market-card" onclick="selectMarket(this, 'us')">
+              <div class="market-flag">🇺🇸</div>
+              <div class="market-name">North America</div>
+              <div class="market-lang">English · YT, LinkedIn, Newsletter</div>
+            </div>
+            <div class="market-card" onclick="selectMarket(this, 'jp')">
+              <div class="market-flag">🇯🇵</div>
+              <div class="market-name">日本</div>
+              <div class="market-lang">日本語 · YT, IG, X</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="form-group" id="platform-section">
+          <label class="form-label">발행 플랫폼 (선택)</label>
+          <div class="platform-tags" id="platform-tags">
+            <span class="platform-tag active" onclick="toggleTag(this)">Instagram</span>
+            <span class="platform-tag active" onclick="toggleTag(this)">YouTube</span>
+            <span class="platform-tag active" onclick="toggleTag(this)">YouTube Shorts</span>
+            <span class="platform-tag" onclick="toggleTag(this)">Threads</span>
+            <span class="platform-tag" onclick="toggleTag(this)">X</span>
+            <span class="platform-tag" onclick="toggleTag(this)">네이버 블로그</span>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">모드</label>
+          <div style="display:flex; gap:12px;">
+            <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:13px;">
+              <input type="radio" name="mode" checked> 일반 (리뷰 후 발행)
+            </label>
+            <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:13px;">
+              <input type="radio" name="mode"> 긴급 (자동 발행)
+            </label>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">시리즈 (선택)</label>
+          <select class="form-input" style="appearance:auto;">
+            <option>없음 (단발)</option>
+            <option>ETF 시리즈 — 4회차</option>
+            <option>AI 도구 시리즈 — 2회차</option>
+            <option>+ 새 시리즈 만들기</option>
+          </select>
+        </div>
+
+        <div style="display:flex; gap:12px; margin-top:24px;">
+          <button class="btn btn-primary" onclick="startPipeline()">파이프라인 시작</button>
+          <button class="btn btn-outline">임시 저장</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Projects List -->
+    <div id="page-projects" class="page">
+      <div class="page-title">프로젝트 목록</div>
+      <div class="page-sub">전체 프로젝트 관리</div>
+
+      <div style="display:flex; gap:8px; margin-bottom:20px;">
+        <button class="btn btn-sm btn-outline" style="border-color:var(--accent); color:var(--accent2);">전체</button>
+        <button class="btn btn-sm btn-outline">🇰🇷 한국</button>
+        <button class="btn btn-sm btn-outline">🇺🇸 북미</button>
+        <button class="btn btn-sm btn-outline">🇯🇵 일본</button>
+      </div>
+
+      <div class="card" style="padding:0;">
+        <div class="project-row" onclick="showPage('pipeline')">
+          <div class="project-topic">ISA 계좌 절세 전략 2025</div>
+          <div class="project-meta">
+            <span class="badge badge-kr">🇰🇷</span>
+            <span class="badge badge-pass">발행 완료</span>
+            <span style="font-size:11px; color:var(--text2);">4/22</span>
+          </div>
+        </div>
+        <div class="project-row" onclick="showPage('pipeline')">
+          <div class="project-topic">Top 5 AI Tools for Productivity</div>
+          <div class="project-meta">
+            <span class="badge badge-us">🇺🇸</span>
+            <span class="badge badge-progress">미디어 제작</span>
+            <span style="font-size:11px; color:var(--text2);">4/23</span>
+          </div>
+        </div>
+        <div class="project-row">
+          <div class="project-topic">ETF vs 개별주식, 뭐가 나을까?</div>
+          <div class="project-meta">
+            <span class="badge badge-kr">🇰🇷</span>
+            <span class="badge badge-draft">리뷰 대기</span>
+            <span style="font-size:11px; color:var(--text2);">4/23</span>
+          </div>
+        </div>
+        <div class="project-row">
+          <div class="project-topic">How I Built a Side Income with AI</div>
+          <div class="project-meta">
+            <span class="badge badge-us">🇺🇸</span>
+            <span class="badge badge-pass">발행 완료</span>
+            <span style="font-size:11px; color:var(--text2);">4/21</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Pipeline -->
+    <div id="page-pipeline" class="page">
+      <div class="page-title">파이프라인 — ISA 계좌 절세 전략</div>
+      <div class="page-sub">🇰🇷 한국 · Instagram, YouTube, Threads</div>
+
+      <div class="pipeline-steps">
+        <div class="step done"><div class="step-icon">✓</div><div class="step-label">리서치</div></div>
+        <div class="step done"><div class="step-icon">✓</div><div class="step-label">훅 생성</div></div>
+        <div class="step done"><div class="step-icon">✓</div><div class="step-label">글쓰기</div></div>
+        <div class="step done"><div class="step-icon">✓</div><div class="step-label">품질 검수</div></div>
+        <div class="step active"><div class="step-icon">⚡</div><div class="step-label">이미지</div></div>
+        <div class="step"><div class="step-icon">🎬</div><div class="step-label">영상</div></div>
+        <div class="step"><div class="step-icon">👁</div><div class="step-label">리뷰</div></div>
+        <div class="step"><div class="step-icon">🚀</div><div class="step-label">발행</div></div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">리서치 결과</div>
+        <div style="font-size:13px; color:var(--text2); margin-bottom:12px;">키워드 18개 · 상위 콘텐츠 12개 분석 · 빈틈 3개 발견</div>
+        <div style="display:flex; flex-wrap:wrap; gap:6px;">
+          <span class="platform-tag active">ISA 계좌</span>
+          <span class="platform-tag active">절세 전략</span>
+          <span class="platform-tag active">비과세 혜택</span>
+          <span class="platform-tag">ETF 투자</span>
+          <span class="platform-tag">연말정산</span>
+          <span class="platform-tag">직장인 재테크</span>
+          <span class="platform-tag">ISA vs 연금저축</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">훅 선택</div>
+        <div style="font-size:13px; margin-bottom:16px;">
+          <div style="padding:12px; background:var(--accent)15; border:1px solid var(--accent); border-radius:8px; margin-bottom:8px;">
+            <div style="font-size:11px; color:var(--accent2); margin-bottom:4px;">추천 ★</div>
+            <strong>"직장인 73.2%가 모르는 ISA 절세 전략 — 연 400만원 비과세"</strong>
+          </div>
+          <div style="padding:12px; background:var(--surface2); border-radius:8px; margin-bottom:8px; cursor:pointer;">
+            "6개월 만에 세금 47만원 아낀 ISA 활용법"
+          </div>
+          <div style="padding:12px; background:var(--surface2); border-radius:8px; margin-bottom:8px; cursor:pointer;">
+            "ISA 계좌, 이 실수 하면 비과세 혜택 날아갑니다"
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">품질 점수</div>
+        <div style="display:flex; align-items:center; gap:16px;">
+          <div style="font-size:48px; font-weight:700; color:var(--green);">87</div>
+          <div style="font-size:13px; color:var(--text2);">
+            <div>AI 티 검출: PASS</div>
+            <div>훅 강도: PASS (숫자 포함)</div>
+            <div>팩트 체크: PASS</div>
+            <div style="color:var(--orange);">경고: 슬라이드 6 정보 밀도 낮음</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Content Preview -->
+    <div id="page-preview" class="page">
+      <div class="page-title">콘텐츠 미리보기</div>
+      <div class="page-sub">ISA 계좌 절세 전략 — 플랫폼별 미리보기</div>
+
+      <div class="preview-tabs">
+        <div class="preview-tab active" onclick="switchPreview(this, 'ig')">Instagram</div>
+        <div class="preview-tab" onclick="switchPreview(this, 'yt')">YouTube</div>
+        <div class="preview-tab" onclick="switchPreview(this, 'threads')">Threads</div>
+        <div class="preview-tab" onclick="switchPreview(this, 'x')">X</div>
+      </div>
+
+      <div id="preview-ig">
+        <div style="font-size:13px; color:var(--text2); margin-bottom:16px;">캐러셀 7장 · 해시태그 5개</div>
+        <div class="slide-preview">
+          <div class="slide-card">
+            <span class="slide-num">1/7</span>
+            <div class="slide-hook">직장인 73.2%가<br>모르는 ISA<br>절세 전략</div>
+          </div>
+          <div class="slide-card" style="background:linear-gradient(135deg,#f8f9fa 0%,#e9ecef 100%); color:#333;">
+            <span class="slide-num" style="color:#999;">2/7</span>
+            <div style="font-size:11px; font-weight:600; color:#6366f1;">POINT 1</div>
+            <div style="font-size:13px; font-weight:600; margin-top:8px;">ISA 계좌란?</div>
+            <div style="font-size:10px; margin-top:6px; color:#666;">개인종합자산관리계좌<br>연 2000만원 납입한도<br>비과세 혜택 400만원</div>
+          </div>
+          <div class="slide-card" style="background:linear-gradient(135deg,#f8f9fa 0%,#e9ecef 100%); color:#333;">
+            <span class="slide-num" style="color:#999;">3/7</span>
+            <div style="font-size:11px; font-weight:600; color:#6366f1;">POINT 2</div>
+            <div style="font-size:13px; font-weight:600; margin-top:8px;">3가지 유형 비교</div>
+            <div style="font-size:10px; margin-top:6px; color:#666;">중개형 vs 신탁형 vs 일임형<br>직장인에겐 중개형 추천</div>
+          </div>
+          <div class="slide-card" style="background:linear-gradient(135deg,#f8f9fa 0%,#e9ecef 100%); color:#333;">
+            <span class="slide-num" style="color:#999;">4/7</span>
+            <div style="font-size:11px; font-weight:600; color:#6366f1;">POINT 3</div>
+            <div style="font-size:13px; font-weight:600; margin-top:8px;">절세 효과 계산</div>
+          </div>
+          <div class="slide-card" style="background:linear-gradient(135deg,#f8f9fa 0%,#e9ecef 100%); color:#333;">
+            <span class="slide-num" style="color:#999;">5/7</span>
+            <div style="font-size:11px; font-weight:600; color:#6366f1;">POINT 4</div>
+            <div style="font-size:13px; font-weight:600; margin-top:8px;">ISA + ETF 조합</div>
+          </div>
+          <div class="slide-card" style="background:linear-gradient(135deg,#f8f9fa 0%,#e9ecef 100%); color:#333;">
+            <span class="slide-num" style="color:#999;">6/7</span>
+            <div style="font-size:11px; font-weight:600; color:#ef4444;">주의</div>
+            <div style="font-size:13px; font-weight:600; margin-top:8px;">이것만은 피하세요</div>
+          </div>
+          <div class="slide-card">
+            <span class="slide-num">7/7</span>
+            <div style="font-size:13px; font-weight:600;">오늘의 핵심 요약</div>
+            <div style="font-size:10px; margin-top:8px; opacity:0.8;">ISA = 비과세 + 분리과세<br>직장인은 중개형 ISA<br>ETF 적립으로 시작하세요</div>
+            <div style="margin-top:12px; font-size:10px; color:var(--accent2);">저장해두세요 🔖</div>
+          </div>
+        </div>
+
+        <div style="margin-top:20px;">
+          <div style="font-size:13px; font-weight:600; margin-bottom:8px;">캡션</div>
+          <div style="font-size:12px; color:var(--text2); background:var(--surface2); padding:16px; border-radius:8px; line-height:1.8;">
+            직장인이라면 반드시 알아야 할 ISA 절세 전략 정리했어요 💰<br><br>
+            연 400만원 비과세 혜택, 놓치지 마세요!<br><br>
+            ⚠️ 본 콘텐츠는 참고용이며 투자 권유가 아닙니다<br>
+            🤖 AI 생성 콘텐츠 | 인공지능 기본법 준수<br><br>
+            #ISA계좌 #절세전략 #직장인재테크 #ETF투자 #비과세
+          </div>
+        </div>
+
+        <div style="margin-top:20px; display:flex; gap:12px;">
+          <button class="btn btn-primary" onclick="alert('발행 확인 페이지로 이동')">발행하기</button>
+          <button class="btn btn-outline" onclick="alert('콘텐츠 편집 모드')">수정하기</button>
+          <button class="btn btn-outline" onclick="alert('이미지 다운로드')">다운로드</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- SNS Accounts -->
+    <div id="page-accounts" class="page">
+      <div class="page-title">SNS 계정 관리</div>
+      <div class="page-sub">플랫폼별 계정 연결 · 시장별 분리</div>
+
+      <div style="display:flex; gap:8px; margin-bottom:20px;">
+        <button class="btn btn-sm btn-outline" style="border-color:var(--accent); color:var(--accent2);">전체</button>
+        <button class="btn btn-sm btn-outline">🇰🇷 한국</button>
+        <button class="btn btn-sm btn-outline">🇺🇸 북미</button>
+      </div>
+
+      <div class="account-grid">
+        <div class="account-card">
+          <div class="account-platform">📸 Instagram <span class="badge badge-kr" style="font-size:10px;">🇰🇷</span></div>
+          <div class="account-handle">@allai0011</div>
+          <div class="account-status"><span class="dot dot-green"></span> 연결됨</div>
+        </div>
+        <div class="account-card">
+          <div class="account-platform">🐦 X <span class="badge badge-kr" style="font-size:10px;">🇰🇷</span></div>
+          <div class="account-handle">@JohnAllai</div>
+          <div class="account-status"><span class="dot dot-green"></span> 연결됨</div>
+        </div>
+        <div class="account-card">
+          <div class="account-platform">▶️ YouTube <span class="badge badge-kr" style="font-size:10px;">🇰🇷</span></div>
+          <div class="account-handle">미연결</div>
+          <div class="account-status"><span class="dot dot-gray"></span> <button class="btn btn-sm btn-outline" style="margin-left:8px;">연결하기</button></div>
+        </div>
+        <div class="account-card">
+          <div class="account-platform">📸 Instagram <span class="badge badge-us" style="font-size:10px;">🇺🇸</span></div>
+          <div class="account-handle">미연결</div>
+          <div class="account-status"><span class="dot dot-gray"></span> <button class="btn btn-sm btn-outline" style="margin-left:8px;">연결하기</button></div>
+        </div>
+        <div class="account-card">
+          <div class="account-platform">💼 LinkedIn <span class="badge badge-us" style="font-size:10px;">🇺🇸</span></div>
+          <div class="account-handle">미연결</div>
+          <div class="account-status"><span class="dot dot-gray"></span> <button class="btn btn-sm btn-outline" style="margin-left:8px;">연결하기</button></div>
+        </div>
+        <div class="account-card" style="border-style:dashed; display:flex; align-items:center; justify-content:center; cursor:pointer;" onclick="alert('계정 추가 모달')">
+          <div style="text-align:center; color:var(--text2);">
+            <div style="font-size:24px;">+</div>
+            <div style="font-size:12px; margin-top:4px;">계정 추가</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Analytics -->
+    <div id="page-analytics" class="page">
+      <div class="page-title">분석</div>
+      <div class="page-sub">콘텐츠 성과 트래킹</div>
+
+      <div style="display:grid; grid-template-columns: repeat(4,1fr); gap:16px; margin-bottom:32px;">
+        <div class="card" style="text-align:center;">
+          <div style="font-size:28px; font-weight:700;">4,230</div>
+          <div style="font-size:11px; color:var(--text2);">총 도달</div>
+          <div style="font-size:11px; color:var(--green);">↑ 23%</div>
+        </div>
+        <div class="card" style="text-align:center;">
+          <div style="font-size:28px; font-weight:700;">312</div>
+          <div style="font-size:11px; color:var(--text2);">저장 수</div>
+          <div style="font-size:11px; color:var(--green);">↑ 45%</div>
+        </div>
+        <div class="card" style="text-align:center;">
+          <div style="font-size:28px; font-weight:700;">7.4%</div>
+          <div style="font-size:11px; color:var(--text2);">참여율</div>
+          <div style="font-size:11px; color:var(--green);">↑ 12%</div>
+        </div>
+        <div class="card" style="text-align:center;">
+          <div style="font-size:28px; font-weight:700;">$0.87</div>
+          <div style="font-size:11px; color:var(--text2);">비용/콘텐츠</div>
+          <div style="font-size:11px; color:var(--red);">↑ 5%</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">상위 콘텐츠</div>
+        <div class="project-row">
+          <div class="project-topic">ISA 계좌 절세 전략</div>
+          <div class="project-meta">
+            <span style="font-size:12px;">저장 89 · 공유 34 · 댓글 12</span>
+          </div>
+        </div>
+        <div class="project-row">
+          <div class="project-topic">Top 5 AI Tools</div>
+          <div class="project-meta">
+            <span style="font-size:12px;">북마크 67 · 답글 23</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">AI 인사이트</div>
+        <div style="font-size:13px; color:var(--text2); line-height:1.8;">
+          • 숫자가 포함된 훅이 평균 2.3배 높은 저장율<br>
+          • Instagram 캐러셀 > X 스레드 성과 (한국 시장)<br>
+          • 최적 발행 시간: 목요일 21:00 KST<br>
+          • 추천 주제: "2025 연말정산 변경사항"
+        </div>
+      </div>
+    </div>
+
+    <!-- Settings -->
+    <div id="page-settings" class="page">
+      <div class="page-title">설정</div>
+      <div class="page-sub">브랜드 프로필 · 발행 설정</div>
+
+      <div class="card">
+        <div class="card-title">브랜드 프로필 — 🇰🇷 한국</div>
+        <div class="form-group">
+          <label class="form-label">브랜드명</label>
+          <input class="form-input" value="Allai">
+        </div>
+        <div class="form-group">
+          <label class="form-label">브랜드 색상</label>
+          <div style="display:flex; gap:8px;">
+            <div style="width:40px; height:40px; background:#1a1a2e; border-radius:8px; border:2px solid var(--border);"></div>
+            <div style="width:40px; height:40px; background:#e94560; border-radius:8px; border:2px solid var(--border);"></div>
+            <div style="width:40px; height:40px; background:#6366f1; border-radius:8px; border:2px solid var(--border);"></div>
+            <div style="width:40px; height:40px; background:#ffffff; border-radius:8px; border:2px solid var(--border);"></div>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">ElevenLabs 보이스</label>
+          <select class="form-input" style="appearance:auto;">
+            <option>Korean Female (기본)</option>
+            <option>Korean Male</option>
+            <option>커스텀 보이스</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Feedback Bar -->
+<div class="feedback-bar">
+  <span style="font-size:13px; color:var(--text2); white-space:nowrap;">💬 피드백:</span>
+  <input class="feedback-input" placeholder="이 화면에서 개선할 점이나 필요한 기능을 남겨주세요..." id="feedback-input">
+  <button class="btn btn-primary btn-sm" onclick="submitFeedback()">보내기</button>
+</div>
+
+<script>
+function showPage(page) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.getElementById('page-' + page).classList.add('active');
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  event.target.closest('.nav-item')?.classList.add('active');
+}
+
+function selectMarket(el, market) {
+  document.querySelectorAll('.market-card').forEach(c => c.classList.remove('selected'));
+  el.classList.add('selected');
+
+  const platforms = {
+    kr: ['Instagram', 'YouTube', 'YouTube Shorts', 'Threads', 'X', '네이버 블로그'],
+    us: ['YouTube', 'LinkedIn', 'Newsletter', 'Instagram', 'YouTube Shorts', 'Reddit', 'Pinterest'],
+    jp: ['YouTube', 'Instagram', 'X', 'TikTok', 'note.com']
+  };
+
+  const container = document.getElementById('platform-tags');
+  container.innerHTML = platforms[market].map((p, i) =>
+    `<span class="platform-tag ${i < 3 ? 'active' : ''}" onclick="toggleTag(this)">${p}</span>`
+  ).join('');
+}
+
+function toggleTag(el) { el.classList.toggle('active'); }
+
+function startPipeline() {
+  const topic = document.getElementById('topic-input').value || 'ISA 계좌 절세 전략';
+  alert(`파이프라인 시작: "${topic}"\n\n리서치 → 훅 생성 → 글쓰기 → 품질 검수 → 이미지 → 영상 → 리뷰 → 발행`);
+  showPage('pipeline');
+}
+
+function switchPreview(el, platform) {
+  document.querySelectorAll('.preview-tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+}
+
+function submitFeedback() {
+  const input = document.getElementById('feedback-input');
+  if (input.value.trim()) {
+    alert(`피드백 저장됨:\n"${input.value}"\n\n(실제로는 GitHub Issue로 자동 등록됩니다)`);
+    input.value = '';
+  }
+}
+</script>
+</body>
+</html>
