@@ -208,46 +208,104 @@ export default function ProjectDetailPage() {
               </div>
             )}
 
-            <div className="flex gap-3">
+            {/* 액션 버튼 */}
+            {displayStatus === "passed" || displayStatus === "published" ? (
+              <div className="space-y-3">
+                <p className="text-sm text-green-600 font-medium">콘텐츠가 준비되었습니다. 다음 단계를 선택하세요.</p>
+                <div className="flex flex-wrap gap-3">
+                  <Button onClick={() => alert('발행 기능은 SNS 계정 연결 후 사용 가능합니다.\n\n/accounts 에서 계정을 먼저 연결해주세요.')}>
+                    발행하기
+                  </Button>
+                  <Button variant="outline" onClick={() => {
+                    const el = document.getElementById('content-preview');
+                    el?.scrollIntoView({ behavior: 'smooth' });
+                  }}>
+                    콘텐츠 확인/수정
+                  </Button>
+                  <Button variant="outline" onClick={runPipeline} disabled={running}>
+                    다시 생성
+                  </Button>
+                </div>
+              </div>
+            ) : (
               <Button onClick={runPipeline} disabled={running}>
-                {running ? "파이프라인 실행 중..." :
+                {running ? "파이프라인 실행 중... (1~2분 소요)" :
                  project.status === "created" ? "파이프라인 시작" : "다시 실행"}
               </Button>
-            </div>
+            )}
           </CardContent>
         </Card>
 
         {/* 콘텐츠 미리보기 */}
         {previews.length > 0 && (
-          <Card>
+          <Card id="content-preview">
             <CardHeader>
-              <CardTitle className="text-lg">콘텐츠 미리보기</CardTitle>
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-lg">콘텐츠 미리보기</CardTitle>
+                <span className="text-sm text-muted-foreground">{previews.length}개 플랫폼</span>
+              </div>
             </CardHeader>
             <CardContent>
               <div className="space-y-6">
                 {previews.map((preview, i) => (
-                  <div key={i} className="border rounded-lg p-4">
-                    <div className="flex items-center justify-between mb-3">
-                      <Badge>{preview.platform}</Badge>
-                      <span className="text-sm text-muted-foreground">
-                        {preview.body_parts}개 파트
-                      </span>
+                  <div key={i} className="border rounded-lg overflow-hidden">
+                    {/* 플랫폼 헤더 */}
+                    <div className="flex items-center justify-between p-4 bg-muted/50 border-b">
+                      <div className="flex items-center gap-2">
+                        <Badge>{preview.platform}</Badge>
+                        <span className="text-sm text-muted-foreground">
+                          {preview.body_parts}개 파트
+                        </span>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button size="sm" variant="outline" onClick={() => alert(`${preview.platform} 발행 — SNS 계정 연결 후 사용 가능`)}>
+                          이 플랫폼만 발행
+                        </Button>
+                      </div>
                     </div>
-                    <div className="mb-3">
-                      <div className="text-sm text-muted-foreground mb-1">훅</div>
-                      <div className="font-semibold">{preview.hook}</div>
-                    </div>
-                    <div className="mb-3">
-                      <div className="text-sm text-muted-foreground mb-1">캡션</div>
-                      <div className="text-sm">{preview.caption_preview}</div>
-                    </div>
-                    <div className="flex flex-wrap gap-1">
-                      {preview.hashtags.map((tag, j) => (
-                        <span key={j} className="text-xs text-primary">#{tag}</span>
-                      ))}
+
+                    <div className="p-4 space-y-4">
+                      {/* 훅 */}
+                      <div>
+                        <div className="text-xs text-muted-foreground mb-1 font-medium">훅</div>
+                        <div className="font-semibold text-lg leading-relaxed">{preview.hook}</div>
+                      </div>
+
+                      {/* 캡션 */}
+                      <div>
+                        <div className="text-xs text-muted-foreground mb-1 font-medium">캡션</div>
+                        <div className="text-sm leading-relaxed whitespace-pre-wrap bg-muted/30 rounded-lg p-3">
+                          {preview.caption_preview}
+                        </div>
+                      </div>
+
+                      {/* 해시태그 */}
+                      <div>
+                        <div className="text-xs text-muted-foreground mb-1 font-medium">해시태그</div>
+                        <div className="flex flex-wrap gap-2">
+                          {preview.hashtags.map((tag, j) => (
+                            <span key={j} className="text-sm bg-primary/10 text-primary px-2 py-1 rounded-md">#{tag}</span>
+                          ))}
+                        </div>
+                      </div>
                     </div>
                   </div>
                 ))}
+              </div>
+
+              {/* 전체 발행 */}
+              <div className="mt-6 p-4 border rounded-lg bg-muted/30">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="font-medium text-sm">전체 발행 준비 완료</div>
+                    <div className="text-xs text-muted-foreground mt-1">
+                      {previews.length}개 플랫폼에 동시 발행합니다 (시차 발행 30분 간격)
+                    </div>
+                  </div>
+                  <Button onClick={() => alert('전체 발행 — SNS 계정 연결 후 사용 가능합니다.\n\n/accounts 에서 계정을 먼저 연결해주세요.')}>
+                    전체 발행
+                  </Button>
+                </div>
               </div>
             </CardContent>
           </Card>
