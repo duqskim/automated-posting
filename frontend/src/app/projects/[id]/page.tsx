@@ -24,6 +24,7 @@ interface ContentPreview {
   caption: string;
   hashtags: string[];
   cta: string;
+  image_urls: string[];
 }
 
 interface PipelineResult {
@@ -286,6 +287,25 @@ export default function ProjectDetailPage() {
                     </div>
 
                     <div className="p-4 space-y-4">
+                      {/* 캐러셀 이미지 */}
+                      {preview.image_urls && preview.image_urls.length > 0 && (
+                        <div>
+                          <div className="text-xs text-muted-foreground mb-2 font-medium">
+                            캐러셀 이미지 ({preview.image_urls.length}장)
+                          </div>
+                          <div className="flex gap-2 overflow-x-auto pb-2">
+                            {preview.image_urls.map((url, k) => (
+                              <img
+                                key={k}
+                                src={`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}${url}`}
+                                alt={`슬라이드 ${k + 1}`}
+                                className="w-48 h-60 object-cover rounded-lg border flex-shrink-0"
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
                       {/* 훅 */}
                       <div className="p-3 bg-primary/5 border border-primary/20 rounded-lg">
                         <div className="text-xs text-primary mb-1 font-medium">훅 (첫 슬라이드)</div>

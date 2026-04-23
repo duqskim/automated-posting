@@ -22,6 +22,7 @@ class ContentPreview(BaseModel):
     caption: str
     hashtags: list[str]
     cta: str
+    image_urls: list[str] = []
 
 
 class PipelineResponse(BaseModel):
@@ -62,7 +63,15 @@ async def run_full_pipeline(
 
         score = int(state.quality.score) if state.quality else 0
 
+        # 이미지 경로를 플랫폼별로 매핑
+        image_filenames = [p.split("/")[-1] for p in (state.image_paths or [])]
+
         for c in state.content.platform_contents:
+            # 캐러셀 플랫폼이면 이미지 연결
+            platform_images = []
+            if c.platform in ("instagram", "threads", "linkedin"):
+                platform_images = [f"/api/images/{f}" for f in image_filenames]
+
             record = GeneratedContent(
                 project_id=project_id,
                 platform=c.platform,
@@ -72,6 +81,7 @@ async def run_full_pipeline(
                 hashtags=c.hashtags,
                 cta=c.cta,
                 quality_score=score,
+                image_paths=platform_images,
             )
             db.add(record)
 
@@ -92,6 +102,7 @@ async def run_full_pipeline(
                 caption=row.caption,
                 hashtags=row.hashtags,
                 cta=row.cta,
+                image_urls=row.image_paths or [],
             ))
 
     return PipelineResponse(

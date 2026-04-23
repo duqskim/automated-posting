@@ -17,3 +17,4 @@ class GeneratedContent(Base, TimestampMixin):
     hashtags: Mapped[list] = mapped_column(JSON, default=[])
     cta: Mapped[str] = mapped_column(Text, default="")
     quality_score: Mapped[int] = mapped_column(Integer, default=0)
+    image_paths: Mapped[list] = mapped_column(JSON, default=[])  # 렌더링된 이미지 경로

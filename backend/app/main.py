@@ -2,9 +2,11 @@
 automated-posting FastAPI 앱
 """
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from loguru import logger
 
 from app.models.base import engine, Base
@@ -48,6 +50,12 @@ app.include_router(auth_router)
 app.include_router(accounts_router)
 app.include_router(projects_router)
 app.include_router(pipeline_router)
+
+
+# 이미지 파일 서빙
+_output_dir = Path(__file__).parents[1] / "output" / "carousel"
+_output_dir.mkdir(parents=True, exist_ok=True)
+app.mount("/api/images", StaticFiles(directory=str(_output_dir)), name="images")
 
 
 @app.get("/api/health")
