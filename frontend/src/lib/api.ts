@@ -54,8 +54,8 @@ export const api = {
       apiFetch(`/api/pipeline/${projectId}/run`, { method: "POST" }),
     research: (projectId: number) =>
       apiFetch(`/api/pipeline/${projectId}/research`, { method: "POST" }),
-    preview: (projectId: number) =>
-      apiFetch(`/api/pipeline/${projectId}/preview`),
+    contents: (projectId: number) =>
+      apiFetch(`/api/pipeline/${projectId}/contents`),
   },
   accounts: {
     list: (market?: string) =>

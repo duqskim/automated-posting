@@ -89,15 +89,14 @@ export default function ProjectDetailPage() {
     if (!token) { router.push("/login"); return; }
     loadProject();
 
-    // 이전에 저장된 콘텐츠가 있으면 복원
-    const cached = localStorage.getItem(`project_${projectId}_contents`);
-    if (cached) {
-      try {
-        const data = JSON.parse(cached);
-        setPreviews(data.contents || []);
-        setPipelineResult(data.pipeline || null);
-      } catch { /* ignore */ }
-    }
+    // DB에서 저장된 콘텐츠 로드
+    api.pipeline.contents(projectId)
+      .then((data) => {
+        if (data && data.length > 0) {
+          setPreviews(data);
+        }
+      })
+      .catch(() => { /* 콘텐츠 없으면 무시 */ });
   }, [loadProject, router, projectId]);
 
   const runPipeline = async () => {
@@ -113,11 +112,6 @@ export default function ProjectDetailPage() {
 
       if (result.contents && result.contents.length > 0) {
         setPreviews(result.contents);
-        // 로컬에 캐시 (새로고침 후에도 볼 수 있도록)
-        localStorage.setItem(`project_${projectId}_contents`, JSON.stringify({
-          contents: result.contents,
-          pipeline: result,
-        }));
       }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "파이프라인 실행 실패");
