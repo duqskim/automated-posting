@@ -13,10 +13,11 @@ def get_llm_client(role: str) -> BaseLLMClient:
     - hooksmith: Claude Sonnet (창의적 훅 생성)
     - analysis: Gemini Flash (성과 데이터 분석)
     """
-    if role in ("research", "analysis", "keyword_expansion"):
-        return GeminiClient()
+    if role in ("research", "keyword_expansion"):
+        return GeminiClient(model="gemini-2.5-pro")  # 분석/추론은 Pro
     elif role in ("writing", "hooksmith", "copywriting", "editing"):
-        return ClaudeClient()
+        return ClaudeClient()  # 글쓰기/창의성은 Sonnet 4.6
+    elif role == "analysis":
+        return GeminiClient(model="gemini-2.5-flash")  # 데이터 분석은 Flash (비용 효율)
     else:
-        # 기본값: Gemini (비용 효율)
-        return GeminiClient()
+        return GeminiClient(model="gemini-2.5-flash")

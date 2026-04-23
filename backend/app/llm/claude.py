@@ -14,7 +14,7 @@ SONNET_OUTPUT_PRICE = 15.0  # $/M tokens
 
 
 class ClaudeClient(BaseLLMClient):
-    def __init__(self, model: str = "claude-sonnet-4-20250514"):
+    def __init__(self, model: str = "claude-sonnet-4-6-20250514"):
         self.client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
         self.model_name = model
 
