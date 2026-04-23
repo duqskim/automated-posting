@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<link href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.min.css" rel="stylesheet">
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  width: 1080px;
+  height: 1350px;
+  font-family: 'Pretendard', sans-serif;
+  overflow: hidden;
+}
+.slide {
+  width: 1080px;
+  height: 1350px;
+  background: {{ bg_primary | default('#0F172A') }};
+  padding: 80px;
+  display: flex;
+  flex-direction: column;
+  color: {{ text_primary | default('#F1F5F9') }};
+  position: relative;
+}
+.emoji-header {
+  font-size: 48px;
+  margin-bottom: 24px;
+}
+.title {
+  font-size: 40px;
+  font-weight: 700;
+  margin-bottom: 48px;
+  word-break: keep-all;
+}
+.summary-list {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+.summary-item {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 24px 28px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 14px;
+  border-left: 4px solid {{ accent | default('#3B82F6') }};
+}
+.summary-check {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: {{ accent | default('#3B82F6') }}25;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-size: 18px;
+  color: {{ accent | default('#60A5FA') }};
+}
+.summary-text {
+  font-size: 22px;
+  font-weight: 500;
+  line-height: 1.4;
+  word-break: keep-all;
+}
+.cta-section {
+  margin-top: 40px;
+  padding: 32px;
+  background: {{ accent | default('#3B82F6') }}10;
+  border: 1px solid {{ accent | default('#3B82F6') }}20;
+  border-radius: 16px;
+  text-align: center;
+}
+.cta-text {
+  font-size: 22px;
+  font-weight: 600;
+  color: {{ accent | default('#60A5FA') }};
+}
+.disclaimer {
+  position: absolute;
+  bottom: 80px;
+  left: 80px;
+  right: 80px;
+  font-size: 13px;
+  color: {{ text_secondary | default('#475569') }};
+  line-height: 1.6;
+}
+.bottom-bar {
+  position: absolute;
+  bottom: 50px;
+  left: 80px;
+  right: 80px;
+  display: flex;
+  justify-content: space-between;
+}
+.brand-handle { font-size: 16px; color: {{ text_secondary | default('#475569') }}; }
+.slide-indicator { font-size: 14px; color: {{ text_secondary | default('#475569') }}; }
+</style>
+</head>
+<body>
+<div class="slide">
+  <div class="emoji-header">{{ emoji | default('📌') }}</div>
+  <div class="title">{{ title | default('오늘의 핵심 요약') }}</div>
+  <div class="summary-list">
+    {% for item in items %}
+    <div class="summary-item">
+      <div class="summary-check">✓</div>
+      <div class="summary-text">{{ item }}</div>
+    </div>
+    {% endfor %}
+  </div>
+  {% if cta_text %}
+  <div class="cta-section">
+    <div class="cta-text">{{ cta_text }}</div>
+  </div>
+  {% endif %}
+  {% if disclaimer %}
+  <div class="disclaimer">{{ disclaimer }}</div>
+  {% endif %}
+  <div class="bottom-bar">
+    <span class="brand-handle">{{ brand_handle | default('') }}</span>
+    <span class="slide-indicator">{{ slide_num | default('') }} / {{ total_slides | default('') }}</span>
+  </div>
+</div>
+</body>
+</html>

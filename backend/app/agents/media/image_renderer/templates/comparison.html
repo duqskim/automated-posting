@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<link href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.min.css" rel="stylesheet">
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  width: 1080px;
+  height: 1350px;
+  font-family: 'Pretendard', sans-serif;
+  overflow: hidden;
+}
+.slide {
+  width: 1080px;
+  height: 1350px;
+  background: {{ bg_primary | default('#0F172A') }};
+  padding: 80px;
+  display: flex;
+  flex-direction: column;
+  color: {{ text_primary | default('#F1F5F9') }};
+  position: relative;
+}
+.slide-title {
+  font-size: 40px;
+  font-weight: 700;
+  margin-bottom: 48px;
+  text-align: center;
+  word-break: keep-all;
+}
+.comparison-grid {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+}
+.compare-col {
+  padding: 40px 32px;
+  border-radius: 20px;
+  display: flex;
+  flex-direction: column;
+}
+.compare-col.left {
+  background: {{ accent | default('#3B82F6') }}12;
+  border: 1px solid {{ accent | default('#3B82F6') }}25;
+}
+.compare-col.right {
+  background: {{ accent_secondary | default('#8B5CF6') }}12;
+  border: 1px solid {{ accent_secondary | default('#8B5CF6') }}25;
+}
+.compare-header {
+  font-size: 28px;
+  font-weight: 700;
+  margin-bottom: 32px;
+  text-align: center;
+  padding-bottom: 20px;
+  border-bottom: 1px solid rgba(255,255,255,0.1);
+}
+.compare-col.left .compare-header { color: {{ accent | default('#60A5FA') }}; }
+.compare-col.right .compare-header { color: {{ accent_secondary | default('#A78BFA') }}; }
+.compare-items {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.compare-item {
+  font-size: 20px;
+  line-height: 1.5;
+  word-break: keep-all;
+  padding-left: 20px;
+  position: relative;
+  color: {{ text_secondary | default('#CBD5E1') }};
+}
+.compare-item::before {
+  content: '•';
+  position: absolute;
+  left: 0;
+  color: {{ text_secondary | default('#64748B') }};
+}
+.vs-badge {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 56px;
+  height: 56px;
+  background: {{ bg_primary | default('#0F172A') }};
+  border: 2px solid {{ text_secondary | default('#334155') }};
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  font-weight: 700;
+  color: {{ text_secondary | default('#94A3B8') }};
+  z-index: 2;
+}
+.bottom-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 24px;
+}
+.brand-handle { font-size: 16px; color: {{ text_secondary | default('#475569') }}; }
+.slide-indicator { font-size: 14px; color: {{ text_secondary | default('#475569') }}; }
+</style>
+</head>
+<body>
+<div class="slide">
+  <div class="slide-title">{{ title | default('A vs B') }}</div>
+  <div class="comparison-grid" style="position:relative;">
+    <div class="compare-col left">
+      <div class="compare-header">{{ left_title | default('Option A') }}</div>
+      <div class="compare-items">
+        {% for item in left_items %}
+        <div class="compare-item">{{ item }}</div>
+        {% endfor %}
+      </div>
+    </div>
+    <div class="vs-badge">VS</div>
+    <div class="compare-col right">
+      <div class="compare-header">{{ right_title | default('Option B') }}</div>
+      <div class="compare-items">
+        {% for item in right_items %}
+        <div class="compare-item">{{ item }}</div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+  <div class="bottom-bar">
+    <span class="brand-handle">{{ brand_handle | default('') }}</span>
+    <span class="slide-indicator">{{ slide_num | default('') }} / {{ total_slides | default('') }}</span>
+  </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<link href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.min.css" rel="stylesheet">
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  width: 1080px;
+  height: 1350px;
+  font-family: 'Pretendard', sans-serif;
+  overflow: hidden;
+}
+.slide {
+  width: 1080px;
+  height: 1350px;
+  background: {{ bg_primary | default('#0F172A') }};
+  background-image: radial-gradient(circle at 50% 35%, {{ accent | default('#3B82F6') }}12 0%, transparent 50%);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  padding: 80px;
+  color: {{ text_primary | default('#F1F5F9') }};
+  position: relative;
+}
+.label-top {
+  font-size: 18px;
+  font-weight: 500;
+  color: {{ accent | default('#60A5FA') }};
+  letter-spacing: 0.08em;
+  margin-bottom: 20px;
+}
+.hero-number {
+  font-size: {{ number_size | default(120) }}px;
+  font-weight: 900;
+  background: linear-gradient(135deg, {{ accent | default('#60A5FA') }}, {{ accent_secondary | default('#A78BFA') }});
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  line-height: 1.1;
+  margin-bottom: 16px;
+}
+.hero-unit {
+  font-size: 28px;
+  font-weight: 300;
+  color: {{ text_secondary | default('#94A3B8') }};
+  margin-bottom: 40px;
+}
+.context-line {
+  font-size: 24px;
+  font-weight: 500;
+  color: {{ text_primary | default('#E2E8F0') }};
+  line-height: 1.6;
+  word-break: keep-all;
+  max-width: 700px;
+}
+.source {
+  position: absolute;
+  bottom: 80px;
+  font-size: 14px;
+  color: {{ text_secondary | default('#475569') }};
+}
+.change-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: 20px;
+  font-size: 16px;
+  font-weight: 600;
+  margin-top: 20px;
+}
+.change-up {
+  background: #22c55e20;
+  color: #4ade80;
+}
+.change-down {
+  background: #ef444420;
+  color: #f87171;
+}
+.bottom-bar {
+  position: absolute;
+  bottom: 50px;
+  left: 80px;
+  right: 80px;
+  display: flex;
+  justify-content: space-between;
+}
+.brand-handle { font-size: 16px; color: {{ text_secondary | default('#475569') }}; }
+.slide-indicator { font-size: 14px; color: {{ text_secondary | default('#475569') }}; }
+</style>
+</head>
+<body>
+<div class="slide">
+  {% if label %}
+  <div class="label-top">{{ label }}</div>
+  {% endif %}
+  <div class="hero-number">{{ number | default('0') }}</div>
+  {% if unit %}
+  <div class="hero-unit">{{ unit }}</div>
+  {% endif %}
+  <div class="context-line">{{ context | default('설명 텍스트') }}</div>
+  {% if change %}
+  <div class="change-indicator {{ 'change-up' if change_direction == 'up' else 'change-down' }}">
+    {{ '▲' if change_direction == 'up' else '▼' }} {{ change }}
+  </div>
+  {% endif %}
+  {% if source_text %}
+  <div class="source">출처: {{ source_text }}</div>
+  {% endif %}
+  <div class="bottom-bar">
+    <span class="brand-handle">{{ brand_handle | default('') }}</span>
+    <span class="slide-indicator">{{ slide_num | default('') }} / {{ total_slides | default('') }}</span>
+  </div>
+</div>
+</body>
+</html>

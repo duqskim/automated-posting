@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<link href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.min.css" rel="stylesheet">
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  width: 1080px;
+  height: 1350px;
+  font-family: 'Pretendard', -apple-system, sans-serif;
+  overflow: hidden;
+}
+.slide {
+  width: 1080px;
+  height: 1350px;
+  background: {{ bg_primary | default('#0F172A') }};
+  background-image: radial-gradient(circle at 30% 20%, {{ accent | default('#3B82F6') }}15 0%, transparent 50%),
+                    radial-gradient(circle at 80% 80%, {{ accent_secondary | default('#8B5CF6') }}10 0%, transparent 40%);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 100px 80px;
+  position: relative;
+  color: {{ text_primary | default('#F1F5F9') }};
+}
+/* 상단 카테고리 태그 */
+.category-tag {
+  position: absolute;
+  top: 60px;
+  left: 80px;
+  font-size: 16px;
+  font-weight: 500;
+  color: {{ accent | default('#60A5FA') }};
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+/* 메인 훅 텍스트 */
+.hook-text {
+  font-size: {{ title_size | default(56) }}px;
+  font-weight: 800;
+  line-height: 1.4;
+  word-break: keep-all;
+  margin-bottom: 24px;
+}
+.hook-highlight {
+  background: linear-gradient(transparent 55%, {{ accent | default('#3B82F6') }}40 55%);
+  padding: 0 4px;
+}
+/* 서브 텍스트 */
+.sub-text {
+  font-size: 22px;
+  font-weight: 400;
+  color: {{ text_secondary | default('#94A3B8') }};
+  line-height: 1.6;
+  word-break: keep-all;
+}
+/* 하단 브랜드 */
+.bottom-bar {
+  position: absolute;
+  bottom: 50px;
+  left: 80px;
+  right: 80px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.brand-handle {
+  font-size: 16px;
+  color: {{ text_secondary | default('#64748B') }};
+  font-weight: 400;
+}
+.slide-indicator {
+  font-size: 14px;
+  color: {{ text_secondary | default('#64748B') }};
+  font-weight: 300;
+}
+/* 장식 요소 */
+.deco-circle {
+  position: absolute;
+  width: 300px;
+  height: 300px;
+  border-radius: 50%;
+  border: 1px solid {{ accent | default('#3B82F6') }}15;
+  top: -80px;
+  right: -60px;
+}
+.deco-line {
+  width: 60px;
+  height: 4px;
+  background: {{ accent | default('#3B82F6') }};
+  border-radius: 2px;
+  margin-bottom: 32px;
+}
+</style>
+</head>
+<body>
+<div class="slide">
+  <div class="deco-circle"></div>
+  <div class="category-tag">{{ category | default('') }}</div>
+  <div class="deco-line"></div>
+  <div class="hook-text">{{ main_text | default('훅 텍스트') }}</div>
+  {% if sub_text %}
+  <div class="sub-text">{{ sub_text }}</div>
+  {% endif %}
+  <div class="bottom-bar">
+    <span class="brand-handle">{{ brand_handle | default('') }}</span>
+    <span class="slide-indicator">{{ slide_num | default('1') }} / {{ total_slides | default('7') }}</span>
+  </div>
+</div>
+</body>
+</html>
