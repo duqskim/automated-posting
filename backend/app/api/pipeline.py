@@ -20,6 +20,7 @@ class PipelineResponse(BaseModel):
     platforms_completed: int = 0
     platforms_total: int = 0
     error: str | None = None
+    contents: list["ContentPreview"] = []
 
 
 class ResearchPreview(BaseModel):
@@ -38,9 +39,10 @@ class HookPreview(BaseModel):
 class ContentPreview(BaseModel):
     platform: str
     hook: str
-    body_parts: int
-    caption_preview: str
+    body: list[str]
+    caption: str
     hashtags: list[str]
+    cta: str
 
 
 @router.post("/{project_id}/research", response_model=ResearchPreview)
@@ -86,6 +88,19 @@ async def run_full_pipeline(
     project.status = state.stage
     await db.commit()
 
+    # 콘텐츠 미리보기 데이터 포함
+    contents = []
+    if state.content:
+        for c in state.content.platform_contents:
+            contents.append(ContentPreview(
+                platform=c.platform,
+                hook=c.hook,
+                body=c.body,
+                caption=c.caption,
+                hashtags=c.hashtags,
+                cta=c.cta,
+            ))
+
     return PipelineResponse(
         project_id=project.id,
         stage=state.stage,
@@ -93,6 +108,7 @@ async def run_full_pipeline(
         platforms_completed=len(state.content.platform_contents) if state.content else 0,
         platforms_total=len(project.target_platforms or []),
         error=state.error,
+        contents=contents,
     )
 
 

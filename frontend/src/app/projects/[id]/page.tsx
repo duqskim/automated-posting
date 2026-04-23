@@ -17,6 +17,15 @@ interface Project {
   is_urgent: boolean;
 }
 
+interface ContentPreview {
+  platform: string;
+  hook: string;
+  body: string[];
+  caption: string;
+  hashtags: string[];
+  cta: string;
+}
+
 interface PipelineResult {
   project_id: number;
   stage: string;
@@ -24,14 +33,7 @@ interface PipelineResult {
   platforms_completed: number;
   platforms_total: number;
   error: string | null;
-}
-
-interface ContentPreview {
-  platform: string;
-  hook: string;
-  body_parts: number;
-  caption_preview: string;
-  hashtags: string[];
+  contents: ContentPreview[];
 }
 
 const PIPELINE_STEPS = [
@@ -99,13 +101,8 @@ export default function ProjectDetailPage() {
       setPipelineResult(result);
       await loadProject();
 
-      if (result.stage === "passed") {
-        try {
-          const previewData = await api.pipeline.preview(projectId);
-          setPreviews(previewData);
-        } catch {
-          // 미리보기 실패해도 OK
-        }
+      if (result.contents && result.contents.length > 0) {
+        setPreviews(result.contents);
       }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "파이프라인 실행 실패");
@@ -254,7 +251,7 @@ export default function ProjectDetailPage() {
                       <div className="flex items-center gap-2">
                         <Badge>{preview.platform}</Badge>
                         <span className="text-sm text-muted-foreground">
-                          {preview.body_parts}개 파트
+                          {preview.body.length}개 파트
                         </span>
                       </div>
                       <div className="flex gap-2">
@@ -266,16 +263,41 @@ export default function ProjectDetailPage() {
 
                     <div className="p-4 space-y-4">
                       {/* 훅 */}
-                      <div>
-                        <div className="text-xs text-muted-foreground mb-1 font-medium">훅</div>
+                      <div className="p-3 bg-primary/5 border border-primary/20 rounded-lg">
+                        <div className="text-xs text-primary mb-1 font-medium">훅 (첫 슬라이드)</div>
                         <div className="font-semibold text-lg leading-relaxed">{preview.hook}</div>
                       </div>
+
+                      {/* 본문 — 슬라이드/파트별 */}
+                      <div>
+                        <div className="text-xs text-muted-foreground mb-2 font-medium">
+                          본문 ({preview.body.length}개 {preview.platform === "instagram" ? "슬라이드" : preview.platform === "x" ? "트윗" : "파트"})
+                        </div>
+                        <div className="space-y-2">
+                          {preview.body.map((part, k) => (
+                            <div key={k} className="flex gap-3 p-3 bg-muted/30 rounded-lg">
+                              <span className="text-xs text-muted-foreground font-mono shrink-0 mt-0.5">
+                                {String(k + 1).padStart(2, '0')}
+                              </span>
+                              <div className="text-sm leading-relaxed whitespace-pre-wrap">{part}</div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* CTA */}
+                      {preview.cta && (
+                        <div className="p-3 bg-green-500/5 border border-green-500/20 rounded-lg">
+                          <div className="text-xs text-green-600 mb-1 font-medium">CTA (행동 유도)</div>
+                          <div className="text-sm">{preview.cta}</div>
+                        </div>
+                      )}
 
                       {/* 캡션 */}
                       <div>
                         <div className="text-xs text-muted-foreground mb-1 font-medium">캡션</div>
                         <div className="text-sm leading-relaxed whitespace-pre-wrap bg-muted/30 rounded-lg p-3">
-                          {preview.caption_preview}
+                          {preview.caption}
                         </div>
                       </div>
 
