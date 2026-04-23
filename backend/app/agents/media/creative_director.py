@@ -79,14 +79,64 @@ THEMES = {
 CATEGORY_THEME_MAP = {
     "재테크": "dark_premium",
     "투자": "dark_premium",
+    "주식": "dark_premium",
+    "ETF": "dark_premium",
+    "ISA": "dark_premium",
+    "절세": "dark_mint",
+    "세금": "dark_mint",
     "AI": "dark_coral",
     "테크": "dark_coral",
-    "절세": "dark_mint",
+    "기술": "dark_coral",
+    "건강": "dark_mint",
     "finance": "dark_premium",
     "investing": "dark_premium",
+    "stock": "dark_premium",
     "tech": "dark_coral",
-    "AI": "dark_coral",
     "productivity": "dark_mint",
+    "health": "dark_mint",
+}
+
+# 주제 카테고리 → 배경 아이콘 (list_icons bg_icon 용)
+CATEGORY_ICONS = {
+    "재테크": "💰",
+    "투자": "📈",
+    "주식": "📊",
+    "ETF": "📊",
+    "ISA": "🏦",
+    "절세": "🧾",
+    "세금": "🧾",
+    "AI": "🤖",
+    "테크": "⚡",
+    "기술": "💻",
+    "건강": "💪",
+    "부동산": "🏠",
+    "코인": "🪙",
+    "finance": "💰",
+    "investing": "📈",
+    "tech": "⚡",
+    "health": "💪",
+}
+
+# 아이템 내용 → 이모지 아이콘 매핑
+CONTENT_ICON_MAP = {
+    # 재테크/투자
+    "수익": "📈", "수익률": "📈", "이익": "💹", "성장": "🚀",
+    "손실": "📉", "리스크": "⚠️", "위험": "⚠️",
+    "절세": "🧾", "세금": "💸", "비용": "💸",
+    "적금": "🏦", "예금": "🏦", "은행": "🏦",
+    "ETF": "📊", "주식": "📊", "투자": "💰",
+    "배당": "🎯", "이자": "💵",
+    # AI/테크
+    "AI": "🤖", "인공지능": "🤖",
+    "자동화": "⚙️", "데이터": "📊",
+    "앱": "📱", "소프트웨어": "💻",
+    "보안": "🔒", "해킹": "🔐",
+    # 일반
+    "시간": "⏰", "속도": "⚡", "빠른": "⚡",
+    "방법": "✅", "단계": "🪜", "순서": "📋",
+    "비교": "⚖️", "차이": "🔍",
+    "무료": "🆓", "비용": "💰",
+    "팁": "💡", "전략": "🎯", "핵심": "🔑",
 }
 
 
@@ -107,6 +157,24 @@ class DesignPlan:
     canvas_size: dict  # {"width": 1080, "height": 1350}
     font_primary: str
     font_accent: str
+
+
+def _detect_category_icon(topic: str) -> str:
+    """주제에서 카테고리 배경 아이콘 탐지"""
+    topic_lower = topic.lower()
+    for keyword, icon in CATEGORY_ICONS.items():
+        if keyword.lower() in topic_lower:
+            return icon
+    return ""
+
+
+def _detect_item_icon(text: str) -> str:
+    """아이템 텍스트에서 관련 이모지 탐지"""
+    text_lower = text.lower()
+    for keyword, icon in CONTENT_ICON_MAP.items():
+        if keyword.lower() in text_lower:
+            return icon
+    return ""
 
 
 class CreativeDirectorAgent:
@@ -181,7 +249,7 @@ class CreativeDirectorAgent:
             if keyword.lower() in topic_lower:
                 return theme_name, THEMES[theme_name]
 
-        # 기본: dark_premium (저장율 가장 높음)
+        # 기본: dark_premium
         return "dark_premium", THEMES["dark_premium"]
 
     def _select_template(self, content_type: str, prev_template: str | None) -> str:
@@ -190,15 +258,67 @@ class CreativeDirectorAgent:
         if len(candidates) == 1:
             return candidates[0]
 
-        # 이전 템플릿과 다른 걸 우선 선택
         for template in candidates:
             if template != prev_template:
                 return template
         return candidates[0]
 
+    def _extract_chart_data(self, slide_text: str) -> dict:
+        """슬라이드 텍스트에서 차트 데이터 추출"""
+        import re as _re
+
+        # ── 단일 퍼센트 → 링(도넛) 차트
+        single_pct = _re.search(r'\b(\d+(?:\.\d+)?)\s*%', slide_text)
+        multi_pcts = _re.findall(r'([가-힣A-Za-z\w]+)[:\s]+(\d+(?:\.\d+)?)\s*%', slide_text)
+
+        if len(multi_pcts) >= 2:
+            # 여러 항목: 수평 막대 차트
+            labels = [m[0].strip()[:12] for m in multi_pcts[:5]]
+            raw_vals = [float(m[1]) for m in multi_pcts[:5]]
+            max_val = max(raw_vals) if raw_vals else 1
+            percents = [round(v / max_val * 100) for v in raw_vals]
+            val_strs = [f"{v:.1f}%" if v != int(v) else f"{int(v)}%" for v in raw_vals]
+            return {
+                "chart_type": "bars",
+                "chart_labels": labels,
+                "chart_values": val_strs,
+                "chart_percents": percents,
+            }
+        elif single_pct:
+            # 단일 퍼센트: 링 차트
+            val = float(single_pct.group(1))
+            return {
+                "chart_type": "ring",
+                "chart_value": val,
+            }
+
+        # ── 숫자 비교 (라벨: 숫자 패턴, % 없음)
+        labeled_nums = _re.findall(r'([가-힣A-Za-z\w]+)[:\s]+(\d[\d,]*(?:\.\d+)?)\b', slide_text)
+        if len(labeled_nums) >= 2:
+            labels = [m[0].strip()[:12] for m in labeled_nums[:5]]
+            raw_vals = []
+            for m in labeled_nums[:5]:
+                try:
+                    raw_vals.append(float(m[1].replace(",", "")))
+                except ValueError:
+                    continue
+            if len(raw_vals) >= 2:
+                max_val = max(raw_vals) if raw_vals else 1
+                percents = [round(v / max_val * 100) for v in raw_vals]
+                val_strs = [f"{int(v):,}" if v == int(v) else f"{v:,.1f}" for v in raw_vals]
+                return {
+                    "chart_type": "bars",
+                    "chart_labels": labels,
+                    "chart_values": val_strs,
+                    "chart_percents": percents,
+                }
+
+        return {}
+
     def _build_template_data(
         self, slide_text: str, content_type: str, slide_index: int,
-        total_slides: int, content: PlatformContent, theme: dict
+        total_slides: int, content: PlatformContent, theme: dict,
+        topic: str = "",
     ) -> dict:
         """슬라이드 텍스트 → 템플릿용 데이터 변환"""
         import re as _re
@@ -208,23 +328,8 @@ class CreativeDirectorAgent:
         body_lines = lines[1:] if len(lines) > 1 else []
         body = "\n".join(body_lines)
 
-        # editorial/summary는 별도 테마 사용 (라이트 or 액센트)
-        if content_type in ("explanation", "tip", "quote"):
-            # editorial 라이트 테마 고정
-            slide_theme = {
-                **theme,
-                # editorial.html은 내부에서 white bg 하드코딩하므로 accent만 주입
-                "accent": theme.get("accent", "#2563EB"),
-                "accent_secondary": theme.get("accent_secondary", "#7C3AED"),
-            }
-        elif content_type in ("summary", "cta"):
-            # summary.html은 accent를 배경으로 씀 → 그대로 전달
-            slide_theme = theme
-        else:
-            slide_theme = theme
-
         base_data = {
-            **slide_theme,
+            **theme,
             "brand_handle": self.brand.get("handle", ""),
             "slide_num": str(slide_index),
             "total_slides": str(total_slides),
@@ -233,7 +338,6 @@ class CreativeDirectorAgent:
         if content_type == "hook":
             hook_text = content.hook if slide_index == 1 and content.hook else title
             title_size = 68 if len(hook_text) <= 12 else 60 if len(hook_text) <= 20 else 52 if len(hook_text) <= 30 else 44
-            # 배경 워드: 주제 키워드 첫 단어 (최대 4자)
             import re as _re2
             words = _re2.sub(r'[^\w가-힣A-Za-z]', ' ', slide_text or "").split()
             bg_word = next((w for w in words if len(w) >= 2), "")[:6].upper()
@@ -246,34 +350,35 @@ class CreativeDirectorAgent:
             })
 
         elif content_type == "data":
-            # 숫자+단위 패턴 추출 (%, 원, 만, 억, $, 배, 개 등)
-            numbers = _re.findall(r'[\d,]+\.?\d*\s*[%원만억$배개명조천]+', slide_text)
+            import re as _re3
+            numbers = _re3.findall(r'[\d,]+\.?\d*\s*[%원만억$배개명조천]+', slide_text)
             if not numbers:
-                numbers = _re.findall(r'[\d,]+\.?\d*', slide_text)
+                numbers = _re3.findall(r'[\d,]+\.?\d*', slide_text)
             hero_num = numbers[0].strip() if numbers else title[:8]
-            # 숫자 제외 나머지를 context로
-            context_text = _re.sub(_re.escape(hero_num), "", slide_text, count=1).strip()
+            context_text = _re3.sub(_re3.escape(hero_num), "", slide_text, count=1).strip()
             context_text = context_text or body or title
-            # 숫자와 단위 분리
-            num_only = _re.sub(r'[^0-9,.]', '', hero_num)
-            unit_only = _re.sub(r'[\d,.]', '', hero_num).strip()
+            num_only = _re3.sub(r'[^0-9,.]', '', hero_num)
+            unit_only = _re3.sub(r'[\d,.]', '', hero_num).strip()
             number_size = 160 if len(num_only) <= 3 else 120 if len(num_only) <= 5 else 90
+
+            # 차트 데이터 추출
+            chart_data = self._extract_chart_data(slide_text)
+
             base_data.update({
                 "number": num_only,
                 "unit": unit_only,
                 "context": context_text[:80],
                 "label": title if num_only and title != hero_num else "",
                 "number_size": number_size,
+                "title": title,
+                **chart_data,
             })
 
         elif content_type == "comparison":
-            # bullet/번호 마커 제거 함수
             def _strip_marker(s: str) -> str:
                 return _re.sub(r'^[\s\-•*\d\.]+\s*', '', s).strip()
 
-            # VS 패턴 파싱: "기존 vs 새로운"
             vs_match = _re.search(r'(.+?)\s*[Vv][Ss]\.?\s*(.+)', title)
-            # 제목에서 한국어 "비교" 패턴도 추출: "A와 B 비교", "A 대 B"
             ko_match = _re.search(r'(.+?)[와과]\s*(.+?)\s*비교', title)
 
             _SUFFIX_RE = _re.compile(r'\s*(차이점|비교|차이|대비|분석)$')
@@ -284,10 +389,8 @@ class CreativeDirectorAgent:
                 left_title = ko_match.group(1).strip()
                 right_title = ko_match.group(2).strip()
             else:
-                # "A 3가지 비교" 처럼 비교 대상이 명시 안 된 경우 — 첫 두 아이템 첫 단어로 헤더
                 clean_items = [_strip_marker(l) for l in body_lines if l.strip()]
                 if len(clean_items) >= 2:
-                    # 콜론 있으면 콜론 앞이 타입명
                     def _extract_type(s: str) -> str:
                         c = s.split(':')[0].split('(')[0].split('–')[0].strip()
                         return c[:12] if c else s[:12]
@@ -297,13 +400,19 @@ class CreativeDirectorAgent:
                     left_title = "장점"
                     right_title = "단점"
 
-            # body_lines 클린 + 균등 분배 (ceil 기준으로 left에 더 줌)
             clean_lines = [_strip_marker(l) for l in body_lines if l.strip()]
             if not clean_lines:
                 clean_lines = [body or "항목 1"]
-            mid = (len(clean_lines) + 1) // 2  # ceil
+            mid = (len(clean_lines) + 1) // 2
             left_items = clean_lines[:mid]
             right_items = clean_lines[mid:] or clean_lines[-1:]
+
+            # 비교 요약 바: 아이템 수 기준
+            left_count = len(left_items)
+            right_count = len(right_items)
+            total_count = left_count + right_count
+            left_strength = round(left_count / total_count * 100) if total_count else 50
+            right_strength = 100 - left_strength
 
             base_data.update({
                 "title": title,
@@ -311,14 +420,15 @@ class CreativeDirectorAgent:
                 "right_title": right_title,
                 "left_items": left_items[:4],
                 "right_items": right_items[:4],
+                "show_summary_bar": True,
+                "left_strength": left_strength,
+                "right_strength": right_strength,
             })
 
         elif content_type in ("steps", "list"):
             items = []
-            # 번호 또는 불릿 마커가 있으면 분리
             bullet_lines = [ln for ln in body_lines if ln]
             if not bullet_lines:
-                # 전체 텍스트를 40자씩 나눔
                 words = slide_text.split()
                 chunk, chunks = [], []
                 for w in words:
@@ -331,26 +441,38 @@ class CreativeDirectorAgent:
                 bullet_lines = chunks or [title]
 
             for line in bullet_lines[:5]:
-                # "1. 제목: 설명" 패턴 파싱
                 colon_match = _re.match(r'^[\d\.\-\•\*\s]*(.+?):\s*(.+)$', line)
                 num_match = _re.match(r'^[\d\.\-\•\*]+\s+(.+)$', line)
                 if colon_match:
-                    items.append({"title": colon_match.group(1).strip()[:35], "desc": colon_match.group(2).strip()[:60]})
+                    item_title = colon_match.group(1).strip()[:35]
+                    item_desc = colon_match.group(2).strip()[:60]
                 elif num_match:
-                    items.append({"title": num_match.group(1).strip()[:50], "desc": ""})
+                    item_title = num_match.group(1).strip()[:50]
+                    item_desc = ""
                 else:
                     item_text = line.strip()
                     if len(item_text) > 30:
-                        items.append({"title": item_text[:30], "desc": item_text[30:].strip()[:60]})
+                        item_title = item_text[:30]
+                        item_desc = item_text[30:].strip()[:60]
                     else:
-                        items.append({"title": item_text, "desc": ""})
+                        item_title = item_text
+                        item_desc = ""
+
+                # 아이콘 탐지
+                icon = _detect_item_icon(item_title + " " + item_desc)
+                items.append({"title": item_title, "desc": item_desc, "icon": icon})
 
             if not items:
-                items = [{"title": title, "desc": body[:60]}]
+                items = [{"title": title, "desc": body[:60], "icon": ""}]
+
+            # 카테고리 배경 아이콘
+            bg_icon = _detect_category_icon(topic or title)
 
             base_data.update({
                 "title": title if body_lines else "핵심 정리",
                 "items": items[:5],
+                "category_label": "핵심 정리",
+                "bg_icon": bg_icon,
             })
 
         elif content_type in ("summary", "cta"):
@@ -373,10 +495,8 @@ class CreativeDirectorAgent:
         else:  # explanation, tip, quote → editorial 템플릿
             title_size = 46 if len(title) <= 18 else 38 if len(title) <= 28 else 32
             body_size = 24 if len(body) <= 120 else 20
-            # 본문에서 강조할 문장 추출 (마지막 줄 or 짧은 핵심 문장)
             highlight = ""
             if body_lines and len(body_lines) >= 2:
-                # 가장 짧은 줄 = 핵심 요약일 가능성 높음
                 short = min(body_lines, key=len)
                 if len(short) <= 50:
                     highlight = short
@@ -409,12 +529,10 @@ class CreativeDirectorAgent:
         total = len(content.body)
 
         for i, slide_text in enumerate(content.body):
-            # 분류 결과 가져오기
             ctype = "explanation"
             if i < len(classifications):
                 ctype = classifications[i].get("type", "explanation")
 
-            # 첫 번째는 항상 hook, 마지막은 항상 cta/summary
             if i == 0:
                 ctype = "hook"
             elif i == total - 1:
@@ -422,7 +540,8 @@ class CreativeDirectorAgent:
 
             template_name = self._select_template(ctype, prev_template)
             template_data = self._build_template_data(
-                slide_text, ctype, i + 1, total, content, theme
+                slide_text, ctype, i + 1, total, content, theme,
+                topic=content_plan.topic,
             )
 
             slides.append(SlideDesign(
@@ -438,7 +557,7 @@ class CreativeDirectorAgent:
             theme_name=theme_name,
             theme=theme,
             slides=slides,
-            canvas_size={"width": 1080, "height": 1350},  # 4:5 비율 (IG 최적)
+            canvas_size={"width": 1080, "height": 1350},
             font_primary="Pretendard",
             font_accent="Pretendard",
         )

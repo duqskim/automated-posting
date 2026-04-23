@@ -50,12 +50,46 @@ export const api = {
     get: (id: number) => apiFetch(`/api/projects/${id}`),
   },
   pipeline: {
+    // 기존 풀 실행 (호환용)
     run: (projectId: number) =>
       apiFetch(`/api/pipeline/${projectId}/run`, { method: "POST" }),
-    research: (projectId: number) =>
-      apiFetch(`/api/pipeline/${projectId}/research`, { method: "POST" }),
     contents: (projectId: number) =>
       apiFetch(`/api/pipeline/${projectId}/contents`),
+
+    // ── 단계별 실행 ──
+    /** 현재 단계 상태 전체 조회 (페이지 로드 시 복원) */
+    getStage: (projectId: number) =>
+      apiFetch(`/api/pipeline/${projectId}/stage`),
+
+    /** Stage 1: 리서치 실행 */
+    runResearch: (projectId: number) =>
+      apiFetch(`/api/pipeline/${projectId}/stage/research`, { method: "POST" }),
+
+    /** Stage 2: 훅 5개 생성 */
+    runHooks: (projectId: number) =>
+      apiFetch(`/api/pipeline/${projectId}/stage/hooks`, { method: "POST" }),
+
+    /** 훅 선택 (인덱스 저장) */
+    selectHook: (projectId: number, index: number) =>
+      apiFetch(`/api/pipeline/${projectId}/stage/hooks`, {
+        method: "PATCH",
+        body: JSON.stringify({ selected_hook_index: index }),
+      }),
+
+    /** Stage 3+4: 글쓰기 + 품질 검수 */
+    runWrite: (projectId: number) =>
+      apiFetch(`/api/pipeline/${projectId}/stage/write`, { method: "POST" }),
+
+    /** 슬라이드 텍스트 직접 편집 저장 */
+    saveSlides: (projectId: number, platform: string, slides: string[]) =>
+      apiFetch(`/api/pipeline/${projectId}/stage/write`, {
+        method: "PATCH",
+        body: JSON.stringify({ platform, slides }),
+      }),
+
+    /** Stage 5+6: 이미지 렌더링 */
+    runRender: (projectId: number) =>
+      apiFetch(`/api/pipeline/${projectId}/stage/render`, { method: "POST" }),
   },
   accounts: {
     list: (market?: string) =>

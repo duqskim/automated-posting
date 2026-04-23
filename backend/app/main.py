@@ -8,6 +8,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from loguru import logger
+from sqlalchemy import text
 
 from app.models.base import engine, Base
 import app.models  # noqa: F401 — 모든 모델 로드 (relationship resolve)
@@ -24,6 +25,10 @@ async def lifespan(app: FastAPI):
     # 개발 환경: 테이블 자동 생성 (프로덕션에서는 Alembic 사용)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        # 새 컬럼 마이그레이션 (이미 존재하면 무시)
+        await conn.execute(text(
+            "ALTER TABLE projects ADD COLUMN IF NOT EXISTS stage_results JSONB"
+        ))
     logger.info("DB 테이블 준비 완료")
     yield
     logger.info("automated-posting 서버 종료")

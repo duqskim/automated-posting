@@ -32,6 +32,9 @@ class Project(Base, TimestampMixin):
     # 모드
     is_urgent: Mapped[bool] = mapped_column(default=False)  # 긴급 모드 (리뷰 스킵)
 
+    # 단계별 파이프라인 결과 (step-by-step review용)
+    stage_results: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
     # Relationships
     user = relationship("User", back_populates="projects")
     series = relationship("ContentSeries", back_populates="projects")

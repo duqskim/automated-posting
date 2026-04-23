@@ -21,9 +21,20 @@ body {
   color: {{ text_primary | default('#F1F5F9') }};
   position: relative;
 }
+/* 배경 그라디언트 */
+.bg-glow {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse at 15% 50%, {{ accent | default('#3B82F6') }}10 0%, transparent 50%),
+    radial-gradient(ellipse at 85% 50%, {{ accent_secondary | default('#8B5CF6') }}10 0%, transparent 50%);
+  pointer-events: none;
+}
 /* 상단 타이틀 */
 .slide-header {
-  margin-bottom: 44px;
+  margin-bottom: 36px;
+  position: relative;
+  z-index: 1;
 }
 .slide-title {
   font-size: 40px;
@@ -37,6 +48,7 @@ body {
   color: {{ text_secondary | default('#64748B') }};
   margin-top: 12px;
 }
+
 /* 비교 컨테이너 */
 .comparison-wrap {
   flex: 1;
@@ -44,7 +56,10 @@ body {
   grid-template-columns: 1fr auto 1fr;
   gap: 0;
   align-items: stretch;
+  position: relative;
+  z-index: 1;
 }
+
 /* 각 컬럼 */
 .compare-col {
   display: flex;
@@ -60,10 +75,11 @@ body {
   background: {{ accent_secondary | default('#8B5CF6') }}0D;
   border: 1.5px solid {{ accent_secondary | default('#8B5CF6') }}30;
 }
+
 /* 컬럼 헤더 */
 .compare-header {
-  padding: 24px 28px;
-  font-size: 24px;
+  padding: 22px 28px;
+  font-size: 22px;
   font-weight: 800;
   text-align: center;
   letter-spacing: -0.3px;
@@ -78,31 +94,57 @@ body {
   color: {{ accent_secondary | default('#A78BFA') }};
   border-bottom: 1px solid {{ accent_secondary | default('#8B5CF6') }}20;
 }
+
 /* 아이템 목록 */
 .compare-items {
   flex: 1;
-  padding: 20px 20px;
+  padding: 18px 18px;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 12px;
 }
 .compare-item {
-  font-size: 18px;
+  font-size: 17px;
   line-height: 1.55;
   word-break: keep-all;
-  padding: 18px 16px;
+  padding: 16px 14px;
   border-radius: 10px;
   background: rgba(255,255,255,0.03);
   flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.compare-item-text {
+  font-size: 17px;
+  line-height: 1.55;
+  color: #CBD5E1;
 }
 .compare-col.left .compare-item {
-  color: #CBD5E1;
   border-left: 3px solid {{ accent | default('#3B82F6') }}50;
 }
 .compare-col.right .compare-item {
-  color: #CBD5E1;
   border-left: 3px solid {{ accent_secondary | default('#8B5CF6') }}50;
 }
+
+/* 인포그래픽 바 (퍼센트가 있을 때) */
+.item-bar-track {
+  height: 6px;
+  background: rgba(255,255,255,0.07);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.item-bar-fill-left {
+  height: 100%;
+  border-radius: 3px;
+  background: linear-gradient(90deg, {{ accent | default('#3B82F6') }}80, {{ accent | default('#3B82F6') }});
+}
+.item-bar-fill-right {
+  height: 100%;
+  border-radius: 3px;
+  background: linear-gradient(90deg, {{ accent_secondary | default('#8B5CF6') }}80, {{ accent_secondary | default('#8B5CF6') }});
+}
+
 /* VS 구분 */
 .vs-col {
   width: 60px;
@@ -110,6 +152,8 @@ body {
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  flex-direction: column;
+  gap: 20px;
 }
 .vs-badge {
   width: 52px;
@@ -125,12 +169,73 @@ body {
   color: {{ text_secondary | default('#94A3B8') }};
   letter-spacing: 0.05em;
 }
+/* VS 세로 구분선 */
+.vs-line {
+  width: 1px;
+  flex: 1;
+  background: linear-gradient(to bottom,
+    transparent,
+    {{ text_secondary | default('#334155') }}40 20%,
+    {{ text_secondary | default('#334155') }}40 80%,
+    transparent);
+}
+
+/* 비교 요약 바 (하단) */
+.summary-bars {
+  position: relative;
+  z-index: 1;
+  margin-top: 24px;
+  padding: 20px 24px;
+  background: rgba(255,255,255,0.03);
+  border-radius: 16px;
+  border: 1px solid rgba(255,255,255,0.07);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.summary-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: {{ text_secondary | default('#64748B') }};
+  width: 100px;
+  flex-shrink: 0;
+  text-align: right;
+}
+.summary-track {
+  flex: 1;
+  height: 10px;
+  background: rgba(255,255,255,0.06);
+  border-radius: 5px;
+  overflow: hidden;
+  display: flex;
+}
+.summary-left {
+  height: 100%;
+  background: {{ accent | default('#3B82F6') }};
+  border-radius: 5px 0 0 5px;
+}
+.summary-right {
+  height: 100%;
+  background: {{ accent_secondary | default('#8B5CF6') }};
+  border-radius: 0 5px 5px 0;
+  margin-left: auto;
+}
+.summary-label-right {
+  font-size: 14px;
+  font-weight: 600;
+  color: {{ text_secondary | default('#64748B') }};
+  width: 100px;
+  flex-shrink: 0;
+}
+
 /* 하단 */
 .bottom-bar {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding-top: 20px;
+  padding-top: 16px;
+  position: relative;
+  z-index: 1;
 }
 .brand-handle { font-size: 15px; color: {{ text_secondary | default('#475569') }}; }
 .slide-indicator { font-size: 14px; color: {{ text_secondary | default('#475569') }}; }
@@ -138,33 +243,66 @@ body {
 </head>
 <body>
 <div class="slide">
+  <div class="bg-glow"></div>
+
   <div class="slide-header">
     <div class="slide-title">{{ title | default('A vs B') }}</div>
     {% if subtitle %}
     <div class="title-sub">{{ subtitle }}</div>
     {% endif %}
   </div>
+
   <div class="comparison-wrap">
     <div class="compare-col left">
       <div class="compare-header">{{ left_title | default('A') }}</div>
       <div class="compare-items">
         {% for item in left_items %}
-        <div class="compare-item">{{ item }}</div>
+        <div class="compare-item">
+          <div class="compare-item-text">{{ item }}</div>
+          {% if left_percents is defined and loop.index0 < left_percents | length %}
+          <div class="item-bar-track">
+            <div class="item-bar-fill-left" style="width: {{ left_percents[loop.index0] }}%"></div>
+          </div>
+          {% endif %}
+        </div>
         {% endfor %}
       </div>
     </div>
+
     <div class="vs-col">
+      <div class="vs-line"></div>
       <div class="vs-badge">VS</div>
+      <div class="vs-line"></div>
     </div>
+
     <div class="compare-col right">
       <div class="compare-header">{{ right_title | default('B') }}</div>
       <div class="compare-items">
         {% for item in right_items %}
-        <div class="compare-item">{{ item }}</div>
+        <div class="compare-item">
+          <div class="compare-item-text">{{ item }}</div>
+          {% if right_percents is defined and loop.index0 < right_percents | length %}
+          <div class="item-bar-track">
+            <div class="item-bar-fill-right" style="width: {{ right_percents[loop.index0] }}%"></div>
+          </div>
+          {% endif %}
+        </div>
         {% endfor %}
       </div>
     </div>
   </div>
+
+  {% if show_summary_bar %}
+  <div class="summary-bars">
+    <div class="summary-label">{{ left_title | default('A') }}</div>
+    <div class="summary-track">
+      <div class="summary-left" style="width: {{ left_strength | default(50) }}%"></div>
+      <div class="summary-right" style="width: {{ right_strength | default(50) }}%"></div>
+    </div>
+    <div class="summary-label-right">{{ right_title | default('B') }}</div>
+  </div>
+  {% endif %}
+
   <div class="bottom-bar">
     <span class="brand-handle">{{ brand_handle | default('') }}</span>
     <span class="slide-indicator">{{ slide_num | default('') }} / {{ total_slides | default('') }}</span>
