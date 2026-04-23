@@ -88,7 +88,17 @@ export default function ProjectDetailPage() {
     const token = localStorage.getItem("token");
     if (!token) { router.push("/login"); return; }
     loadProject();
-  }, [loadProject, router]);
+
+    // 이전에 저장된 콘텐츠가 있으면 복원
+    const cached = localStorage.getItem(`project_${projectId}_contents`);
+    if (cached) {
+      try {
+        const data = JSON.parse(cached);
+        setPreviews(data.contents || []);
+        setPipelineResult(data.pipeline || null);
+      } catch { /* ignore */ }
+    }
+  }, [loadProject, router, projectId]);
 
   const runPipeline = async () => {
     setRunning(true);
@@ -103,6 +113,11 @@ export default function ProjectDetailPage() {
 
       if (result.contents && result.contents.length > 0) {
         setPreviews(result.contents);
+        // 로컬에 캐시 (새로고침 후에도 볼 수 있도록)
+        localStorage.setItem(`project_${projectId}_contents`, JSON.stringify({
+          contents: result.contents,
+          pipeline: result,
+        }));
       }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "파이프라인 실행 실패");
@@ -232,6 +247,21 @@ export default function ProjectDetailPage() {
             )}
           </CardContent>
         </Card>
+
+        {/* 콘텐츠 없음 안내 */}
+        {previews.length === 0 && (displayStatus === "passed" || displayStatus === "published") && (
+          <Card className="mb-6">
+            <CardContent className="py-8 text-center">
+              <p className="text-muted-foreground mb-4">
+                이전에 생성한 콘텐츠가 만료되었습니다.<br />
+                &quot;다시 생성&quot; 버튼을 눌러 새로 만들어주세요.
+              </p>
+              <Button onClick={runPipeline} disabled={running}>
+                {running ? "생성 중..." : "다시 생성"}
+              </Button>
+            </CardContent>
+          </Card>
+        )}
 
         {/* 콘텐츠 미리보기 */}
         {previews.length > 0 && (
