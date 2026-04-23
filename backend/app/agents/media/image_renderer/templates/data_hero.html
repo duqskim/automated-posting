@@ -14,101 +14,157 @@ body {
 .slide {
   width: 1080px;
   height: 1350px;
-  background: {{ bg_primary | default('#0F172A') }};
-  background-image: radial-gradient(circle at 50% 35%, {{ accent | default('#3B82F6') }}12 0%, transparent 50%);
+  background: {{ bg_primary | default('#0A0F1E') }};
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  padding: 80px;
+  color: {{ text_primary | default('#F8FAFC') }};
+}
+/* 배경 그리드 패턴 */
+.bg-grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient({{ accent | default('#3B82F6') }}06 1px, transparent 1px),
+    linear-gradient(90deg, {{ accent | default('#3B82F6') }}06 1px, transparent 1px);
+  background-size: 80px 80px;
+}
+/* 배경 글로우 */
+.bg-glow {
+  position: absolute;
+  top: -100px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 800px;
+  height: 800px;
+  background: radial-gradient(circle, {{ accent | default('#3B82F6') }}15 0%, transparent 60%);
+  pointer-events: none;
+}
+/* 상단 레이블 */
+.label-top {
+  font-size: 15px;
+  font-weight: 700;
+  color: {{ accent | default('#60A5FA') }};
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin-bottom: 32px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  position: relative;
+  z-index: 1;
+}
+.label-top::before {
+  content: '';
+  display: block;
+  width: 24px;
+  height: 3px;
+  background: {{ accent | default('#3B82F6') }};
+  border-radius: 2px;
+}
+/* 히어로 숫자 */
+.hero-number-wrap {
+  flex: 1;
   display: flex;
   flex-direction: column;
   justify-content: center;
   align-items: center;
   text-align: center;
-  padding: 80px;
-  color: {{ text_primary | default('#F1F5F9') }};
   position: relative;
+  z-index: 1;
 }
-.label-top {
-  font-size: 18px;
-  font-weight: 500;
-  color: {{ accent | default('#60A5FA') }};
-  letter-spacing: 0.08em;
-  margin-bottom: 20px;
-}
-.hero-number {
-  font-size: {{ number_size | default(120) }}px;
-  font-weight: 900;
-  background: linear-gradient(135deg, {{ accent | default('#60A5FA') }}, {{ accent_secondary | default('#A78BFA') }});
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  line-height: 1.1;
-  margin-bottom: 16px;
-}
-.hero-unit {
-  font-size: 28px;
-  font-weight: 300;
-  color: {{ text_secondary | default('#94A3B8') }};
+.hero-number-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
   margin-bottom: 40px;
 }
+.hero-number {
+  font-size: {{ number_size | default(200) }}px;
+  font-weight: 900;
+  background: linear-gradient(135deg, {{ accent | default('#60A5FA') }} 0%, {{ accent_secondary | default('#A78BFA') }} 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  line-height: 1;
+  letter-spacing: -6px;
+}
+.hero-unit {
+  font-size: 80px;
+  font-weight: 700;
+  background: linear-gradient(135deg, {{ accent | default('#60A5FA') }} 0%, {{ accent_secondary | default('#A78BFA') }} 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  line-height: 1;
+  opacity: 0.8;
+}
+/* 컨텍스트 카드 */
+.context-card {
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 20px;
+  padding: 36px 60px;
+  text-align: center;
+  width: 900px;
+}
 .context-line {
-  font-size: 24px;
-  font-weight: 500;
+  font-size: 28px;
+  font-weight: 600;
   color: {{ text_primary | default('#E2E8F0') }};
   line-height: 1.6;
   word-break: keep-all;
-  max-width: 700px;
 }
-.source {
-  position: absolute;
-  bottom: 80px;
-  font-size: 14px;
-  color: {{ text_secondary | default('#475569') }};
-}
+/* 변화 지표 */
 .change-indicator {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 8px 16px;
-  border-radius: 20px;
-  font-size: 16px;
-  font-weight: 600;
+  gap: 8px;
+  padding: 10px 20px;
+  border-radius: 24px;
+  font-size: 17px;
+  font-weight: 700;
   margin-top: 20px;
 }
-.change-up {
-  background: #22c55e20;
-  color: #4ade80;
-}
-.change-down {
-  background: #ef444420;
-  color: #f87171;
-}
+.change-up { background: #22c55e18; color: #4ade80; border: 1px solid #22c55e30; }
+.change-down { background: #ef444418; color: #f87171; border: 1px solid #ef444430; }
+/* 하단 바 */
 .bottom-bar {
-  position: absolute;
-  bottom: 50px;
-  left: 80px;
-  right: 80px;
   display: flex;
   justify-content: space-between;
+  align-items: center;
+  position: relative;
+  z-index: 1;
 }
-.brand-handle { font-size: 16px; color: {{ text_secondary | default('#475569') }}; }
+.brand-handle { font-size: 15px; color: {{ text_secondary | default('#475569') }}; }
 .slide-indicator { font-size: 14px; color: {{ text_secondary | default('#475569') }}; }
 </style>
 </head>
 <body>
 <div class="slide">
+  <div class="bg-grid"></div>
+  <div class="bg-glow"></div>
   {% if label %}
   <div class="label-top">{{ label }}</div>
   {% endif %}
-  <div class="hero-number">{{ number | default('0') }}</div>
-  {% if unit %}
-  <div class="hero-unit">{{ unit }}</div>
-  {% endif %}
-  <div class="context-line">{{ context | default('설명 텍스트') }}</div>
-  {% if change %}
-  <div class="change-indicator {{ 'change-up' if change_direction == 'up' else 'change-down' }}">
-    {{ '▲' if change_direction == 'up' else '▼' }} {{ change }}
+  <div class="hero-number-wrap">
+    <div class="hero-number-row">
+      <div class="hero-number">{{ number | default('0') }}</div>
+      {% if unit %}
+      <div class="hero-unit">{{ unit }}</div>
+      {% endif %}
+    </div>
+    <div class="context-card">
+      <div class="context-line">{{ context | default('설명 텍스트') }}</div>
+      {% if change %}
+      <div class="change-indicator {{ 'change-up' if change_direction == 'up' else 'change-down' }}">
+        {{ '▲' if change_direction == 'up' else '▼' }} {{ change }}
+      </div>
+      {% endif %}
+    </div>
   </div>
-  {% endif %}
-  {% if source_text %}
-  <div class="source">출처: {{ source_text }}</div>
-  {% endif %}
   <div class="bottom-bar">
     <span class="brand-handle">{{ brand_handle | default('') }}</span>
     <span class="slide-indicator">{{ slide_num | default('') }} / {{ total_slides | default('') }}</span>

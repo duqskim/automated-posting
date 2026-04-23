@@ -15,37 +15,96 @@ body {
   width: 1080px;
   height: 1350px;
   background: {{ bg_primary | default('#0F172A') }};
-  background-image: radial-gradient(circle at 30% 20%, {{ accent | default('#3B82F6') }}15 0%, transparent 50%),
-                    radial-gradient(circle at 80% 80%, {{ accent_secondary | default('#8B5CF6') }}10 0%, transparent 40%);
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  padding: 100px 80px;
   position: relative;
-  color: {{ text_primary | default('#F1F5F9') }};
+  overflow: hidden;
+  color: {{ text_primary | default('#F8FAFC') }};
 }
-/* 상단 카테고리 태그 */
+/* 상단 그라디언트 오버레이 */
+.bg-gradient {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse at 20% 0%, {{ accent | default('#3B82F6') }}25 0%, transparent 55%),
+    radial-gradient(ellipse at 90% 100%, {{ accent_secondary | default('#8B5CF6') }}20 0%, transparent 50%);
+}
+/* 배경 대형 텍스트 (워터마크 스타일) */
+.bg-word {
+  position: absolute;
+  top: 80px;
+  left: -10px;
+  right: -10px;
+  font-size: 240px;
+  font-weight: 900;
+  color: transparent;
+  -webkit-text-stroke: 1.5px {{ accent | default('#3B82F6') }}30;
+  line-height: 1;
+  word-break: break-all;
+  letter-spacing: -6px;
+  user-select: none;
+  z-index: 0;
+}
+/* 좌측 액센트 바 */
+.accent-bar {
+  position: absolute;
+  left: 0;
+  top: 15%;
+  bottom: 15%;
+  width: 6px;
+  background: linear-gradient(to bottom, {{ accent | default('#3B82F6') }}, {{ accent_secondary | default('#8B5CF6') }});
+  border-radius: 0 3px 3px 0;
+  z-index: 2;
+}
+/* 상단 카테고리 */
 .category-tag {
   position: absolute;
-  top: 60px;
+  top: 64px;
   left: 80px;
-  font-size: 16px;
-  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 15px;
+  font-weight: 600;
   color: {{ accent | default('#60A5FA') }};
-  letter-spacing: 0.05em;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
+  z-index: 2;
 }
-/* 메인 훅 텍스트 */
+.category-tag::before {
+  content: '';
+  display: block;
+  width: 28px;
+  height: 3px;
+  background: {{ accent | default('#3B82F6') }};
+  border-radius: 2px;
+}
+/* 메인 콘텐츠 영역 — 슬라이드 하단 절반 */
+.main-content {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 55%;
+  padding: 60px 80px 100px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  z-index: 2;
+  /* 그라데이션 오버레이로 텍스트 가독성 확보 */
+  background: linear-gradient(to bottom,
+    transparent 0%,
+    {{ bg_primary | default('#0F172A') }}80 30%,
+    {{ bg_primary | default('#0F172A') }}CC 60%,
+    {{ bg_primary | default('#0F172A') }} 100%
+  );
+}
+/* 훅 메인 텍스트 */
 .hook-text {
-  font-size: {{ title_size | default(56) }}px;
-  font-weight: 800;
-  line-height: 1.4;
+  font-size: {{ title_size | default(68) }}px;
+  font-weight: 900;
+  line-height: 1.25;
   word-break: keep-all;
   margin-bottom: 24px;
-}
-.hook-highlight {
-  background: linear-gradient(transparent 55%, {{ accent | default('#3B82F6') }}40 55%);
-  padding: 0 4px;
+  letter-spacing: -1px;
 }
 /* 서브 텍스트 */
 .sub-text {
@@ -54,55 +113,42 @@ body {
   color: {{ text_secondary | default('#94A3B8') }};
   line-height: 1.6;
   word-break: keep-all;
+  margin-bottom: 16px;
 }
-/* 하단 브랜드 */
+/* 하단 바 */
 .bottom-bar {
   position: absolute;
-  bottom: 50px;
+  bottom: 48px;
   left: 80px;
   right: 80px;
   display: flex;
   justify-content: space-between;
   align-items: center;
+  z-index: 3;
 }
 .brand-handle {
-  font-size: 16px;
-  color: {{ text_secondary | default('#64748B') }};
-  font-weight: 400;
+  font-size: 15px;
+  font-weight: 500;
+  color: {{ text_secondary | default('#475569') }};
 }
 .slide-indicator {
   font-size: 14px;
-  color: {{ text_secondary | default('#64748B') }};
-  font-weight: 300;
-}
-/* 장식 요소 */
-.deco-circle {
-  position: absolute;
-  width: 300px;
-  height: 300px;
-  border-radius: 50%;
-  border: 1px solid {{ accent | default('#3B82F6') }}15;
-  top: -80px;
-  right: -60px;
-}
-.deco-line {
-  width: 60px;
-  height: 4px;
-  background: {{ accent | default('#3B82F6') }};
-  border-radius: 2px;
-  margin-bottom: 32px;
+  color: {{ text_secondary | default('#475569') }};
 }
 </style>
 </head>
 <body>
 <div class="slide">
-  <div class="deco-circle"></div>
+  <div class="bg-gradient"></div>
+  <div class="bg-word">{{ bg_word | default('') }}</div>
+  <div class="accent-bar"></div>
   <div class="category-tag">{{ category | default('') }}</div>
-  <div class="deco-line"></div>
-  <div class="hook-text">{{ main_text | default('훅 텍스트') }}</div>
-  {% if sub_text %}
-  <div class="sub-text">{{ sub_text }}</div>
-  {% endif %}
+  <div class="main-content">
+    <div class="hook-text">{{ main_text | default('훅 텍스트') }}</div>
+    {% if sub_text %}
+    <div class="sub-text">{{ sub_text }}</div>
+    {% endif %}
+  </div>
   <div class="bottom-bar">
     <span class="brand-handle">{{ brand_handle | default('') }}</span>
     <span class="slide-indicator">{{ slide_num | default('1') }} / {{ total_slides | default('7') }}</span>

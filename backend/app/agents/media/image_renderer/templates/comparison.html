@@ -15,112 +15,149 @@ body {
   width: 1080px;
   height: 1350px;
   background: {{ bg_primary | default('#0F172A') }};
-  padding: 80px;
   display: flex;
   flex-direction: column;
+  padding: 72px 80px;
   color: {{ text_primary | default('#F1F5F9') }};
   position: relative;
 }
+/* 상단 타이틀 */
+.slide-header {
+  margin-bottom: 44px;
+}
 .slide-title {
   font-size: 40px;
-  font-weight: 700;
-  margin-bottom: 48px;
-  text-align: center;
+  font-weight: 800;
   word-break: keep-all;
+  line-height: 1.3;
+  letter-spacing: -0.5px;
 }
-.comparison-grid {
+.title-sub {
+  font-size: 17px;
+  color: {{ text_secondary | default('#64748B') }};
+  margin-top: 12px;
+}
+/* 비교 컨테이너 */
+.comparison-wrap {
   flex: 1;
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 24px;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 0;
+  align-items: stretch;
 }
+/* 각 컬럼 */
 .compare-col {
-  padding: 40px 32px;
-  border-radius: 20px;
   display: flex;
   flex-direction: column;
+  border-radius: 20px;
+  overflow: hidden;
 }
 .compare-col.left {
-  background: {{ accent | default('#3B82F6') }}12;
-  border: 1px solid {{ accent | default('#3B82F6') }}25;
+  background: {{ accent | default('#3B82F6') }}0D;
+  border: 1.5px solid {{ accent | default('#3B82F6') }}30;
 }
 .compare-col.right {
-  background: {{ accent_secondary | default('#8B5CF6') }}12;
-  border: 1px solid {{ accent_secondary | default('#8B5CF6') }}25;
+  background: {{ accent_secondary | default('#8B5CF6') }}0D;
+  border: 1.5px solid {{ accent_secondary | default('#8B5CF6') }}30;
 }
+/* 컬럼 헤더 */
 .compare-header {
-  font-size: 28px;
-  font-weight: 700;
-  margin-bottom: 32px;
+  padding: 24px 28px;
+  font-size: 24px;
+  font-weight: 800;
   text-align: center;
-  padding-bottom: 20px;
-  border-bottom: 1px solid rgba(255,255,255,0.1);
+  letter-spacing: -0.3px;
 }
-.compare-col.left .compare-header { color: {{ accent | default('#60A5FA') }}; }
-.compare-col.right .compare-header { color: {{ accent_secondary | default('#A78BFA') }}; }
+.compare-col.left .compare-header {
+  background: {{ accent | default('#3B82F6') }}20;
+  color: {{ accent | default('#60A5FA') }};
+  border-bottom: 1px solid {{ accent | default('#3B82F6') }}20;
+}
+.compare-col.right .compare-header {
+  background: {{ accent_secondary | default('#8B5CF6') }}20;
+  color: {{ accent_secondary | default('#A78BFA') }};
+  border-bottom: 1px solid {{ accent_secondary | default('#8B5CF6') }}20;
+}
+/* 아이템 목록 */
 .compare-items {
   flex: 1;
+  padding: 20px 20px;
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 14px;
 }
 .compare-item {
-  font-size: 20px;
-  line-height: 1.5;
+  font-size: 18px;
+  line-height: 1.55;
   word-break: keep-all;
-  padding-left: 20px;
-  position: relative;
-  color: {{ text_secondary | default('#CBD5E1') }};
+  padding: 18px 16px;
+  border-radius: 10px;
+  background: rgba(255,255,255,0.03);
+  flex: 1;
 }
-.compare-item::before {
-  content: '•';
-  position: absolute;
-  left: 0;
-  color: {{ text_secondary | default('#64748B') }};
+.compare-col.left .compare-item {
+  color: #CBD5E1;
+  border-left: 3px solid {{ accent | default('#3B82F6') }}50;
+}
+.compare-col.right .compare-item {
+  color: #CBD5E1;
+  border-left: 3px solid {{ accent_secondary | default('#8B5CF6') }}50;
+}
+/* VS 구분 */
+.vs-col {
+  width: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
 }
 .vs-badge {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: 56px;
-  height: 56px;
+  width: 52px;
+  height: 52px;
   background: {{ bg_primary | default('#0F172A') }};
   border: 2px solid {{ text_secondary | default('#334155') }};
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 16px;
-  font-weight: 700;
+  font-size: 15px;
+  font-weight: 800;
   color: {{ text_secondary | default('#94A3B8') }};
-  z-index: 2;
+  letter-spacing: 0.05em;
 }
+/* 하단 */
 .bottom-bar {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding-top: 24px;
+  padding-top: 20px;
 }
-.brand-handle { font-size: 16px; color: {{ text_secondary | default('#475569') }}; }
+.brand-handle { font-size: 15px; color: {{ text_secondary | default('#475569') }}; }
 .slide-indicator { font-size: 14px; color: {{ text_secondary | default('#475569') }}; }
 </style>
 </head>
 <body>
 <div class="slide">
-  <div class="slide-title">{{ title | default('A vs B') }}</div>
-  <div class="comparison-grid" style="position:relative;">
+  <div class="slide-header">
+    <div class="slide-title">{{ title | default('A vs B') }}</div>
+    {% if subtitle %}
+    <div class="title-sub">{{ subtitle }}</div>
+    {% endif %}
+  </div>
+  <div class="comparison-wrap">
     <div class="compare-col left">
-      <div class="compare-header">{{ left_title | default('Option A') }}</div>
+      <div class="compare-header">{{ left_title | default('A') }}</div>
       <div class="compare-items">
         {% for item in left_items %}
         <div class="compare-item">{{ item }}</div>
         {% endfor %}
       </div>
     </div>
-    <div class="vs-badge">VS</div>
+    <div class="vs-col">
+      <div class="vs-badge">VS</div>
+    </div>
     <div class="compare-col right">
-      <div class="compare-header">{{ right_title | default('Option B') }}</div>
+      <div class="compare-header">{{ right_title | default('B') }}</div>
       <div class="compare-items">
         {% for item in right_items %}
         <div class="compare-item">{{ item }}</div>
