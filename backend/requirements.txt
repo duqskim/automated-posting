@@ -48,3 +48,4 @@ python-dotenv==1.0.1
 pytz
 pyyaml
 httpx
+email-validator

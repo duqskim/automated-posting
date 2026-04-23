@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
 
 from app.models.base import engine, Base
+import app.models  # noqa: F401 — 모든 모델 로드 (relationship resolve)
 from app.auth.router import router as auth_router
 from app.api.accounts import router as accounts_router
 from app.api.projects import router as projects_router
