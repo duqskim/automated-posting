@@ -5,8 +5,8 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    # Database
-    database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/automated_posting"
+    # Database (SQLite for dev, PostgreSQL for prod)
+    database_url: str = "sqlite+aiosqlite:///./automated_posting.db"
 
     # Redis
     redis_url: str = "redis://localhost:6379/0"

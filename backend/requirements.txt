@@ -15,6 +15,7 @@ passlib[bcrypt]
 # === Database ===
 sqlalchemy[asyncio]
 asyncpg
+aiosqlite
 alembic
 
 # === Task Queue ===

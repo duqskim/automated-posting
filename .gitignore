@@ -40,3 +40,6 @@ output/
 
 # Docker
 docker-data/
+*.png
+*.db
+output/

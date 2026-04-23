@@ -7,7 +7,7 @@ from pathlib import Path
 from dataclasses import dataclass, field
 from loguru import logger
 
-from app.config import settings
+from app.settings import settings
 from app.config.market_profile import MarketProfile
 from app.agents.writer.copywriter import ContentPlan
 from app.agents.media.art_director import ArtDirectorResult, ImageAsset

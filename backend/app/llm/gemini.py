@@ -5,7 +5,7 @@ from loguru import logger
 
 import google.generativeai as genai
 
-from app.config import settings
+from app.settings import settings
 from app.llm.base import BaseLLMClient, LLMResponse
 
 

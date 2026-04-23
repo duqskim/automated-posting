@@ -5,7 +5,7 @@ from loguru import logger
 
 import anthropic
 
-from app.config import settings
+from app.settings import settings
 from app.llm.base import BaseLLMClient, LLMResponse
 
 # Claude Sonnet 4 pricing (per million tokens)
