@@ -466,11 +466,8 @@ export default function CharacterDesignPage() {
             bible={bible}
             seriesId={seriesId}
             router={router}
-            imageUrl={
-              session.image_urls && session.selected_image_index !== undefined
-                ? session.image_urls[session.selected_image_index]
-                : session.image_urls?.[0]
-            }
+            imageUrls={session.image_urls}
+            selectedImageIndex={session.selected_image_index ?? 0}
           />
         )}
 
@@ -935,16 +932,20 @@ function BibleView({
   bible,
   seriesId,
   router,
-  imageUrl,
+  imageUrls,
+  selectedImageIndex,
 }: {
   bible: CharacterBible;
   seriesId: number;
   router: ReturnType<typeof useRouter>;
-  imageUrl?: string;
+  imageUrls?: string[];
+  selectedImageIndex?: number;
 }) {
   const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-  const fullImageUrl = imageUrl
-    ? imageUrl.startsWith("http") ? imageUrl : `${API_URL}${imageUrl}`
+  const toFull = (url: string) =>
+    url.startsWith("http") ? url : `${API_URL}${url}`;
+  const selectedUrl = imageUrls && imageUrls.length > 0
+    ? toFull(imageUrls[selectedImageIndex ?? 0])
     : null;
 
   return (
@@ -953,9 +954,9 @@ function BibleView({
       <Card className="border-primary/30 bg-primary/5">
         <CardContent className="p-5">
           <div className="flex items-start gap-4 mb-3">
-            {fullImageUrl && (
+            {selectedUrl && (
               <img
-                src={fullImageUrl}
+                src={selectedUrl}
                 alt={bible.name}
                 className="w-24 h-24 rounded-xl object-cover border border-primary/20 flex-shrink-0"
               />
@@ -982,6 +983,33 @@ function BibleView({
           )}
         </CardContent>
       </Card>
+
+      {/* 생성된 이미지 전체 */}
+      {imageUrls && imageUrls.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm">생성된 이미지 ({imageUrls.length}장)</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 gap-3">
+              {imageUrls.map((url, idx) => (
+                <div key={idx} className="relative">
+                  <img
+                    src={toFull(url)}
+                    alt={`${bible.name} ${idx + 1}`}
+                    className="w-full aspect-square object-cover rounded-xl border border-border"
+                  />
+                  {idx === (selectedImageIndex ?? 0) && (
+                    <div className="absolute top-2 right-2 bg-primary text-primary-foreground text-xs px-2 py-0.5 rounded-full">
+                      선택됨
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* 미션/세계관 */}
       <Card>
