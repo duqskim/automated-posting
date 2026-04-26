@@ -89,6 +89,8 @@ Stage 5: Character Bible 작성 (Claude Opus 4.6, max_tokens=16384)
 | 이미지 생성 Gemini 3 Pro Image | Imagen 4.0 fallback |
 | 캐릭터 생성 진행 상태 표시 | 단계별 진행바 + 모델명 |
 | 완성 화면에 캐릭터 이미지 표시 | BibleView 헤더에 선택 이미지 |
+| 에피소드 파이프라인 5단계 상태바 | 시리즈 상세 → 에피소드 카드에 리서치/훅/글쓰기/이미지/영상 진행 표시 |
+| Korea Untold 플랜 페이지 | /plan 라우트, 33편 아웃라인 (스페셜 3편 포함) |
 
 ### 예정
 
