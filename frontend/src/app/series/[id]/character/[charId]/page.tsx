@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -108,6 +108,103 @@ interface CharacterBible {
   future_directions: string[];
 }
 
+/* ─── 단계 진행 설정 ──────────────────────────────────────────
+   각 단계별 예상 소요시간(초)과 표시 메시지 정의
+─────────────────────────────────────────────────────────────── */
+
+interface StageRunConfig {
+  label: string;
+  model: string;
+  modelColor: string;
+  messages: string[];       // 시간 경과에 따라 순서대로 표시
+  estimatedSecs: number;    // 진행바 기준 시간 (90%까지)
+}
+
+const STAGE_RUN_CONFIGS: Record<string, StageRunConfig> = {
+  audience: {
+    label: "오디언스 리서치",
+    model: "Gemini 2.5 Flash",
+    modelColor: "text-blue-500",
+    estimatedSecs: 30,
+    messages: [
+      "시리즈 카테고리와 시장을 분석하는 중...",
+      "타겟 오디언스 세그먼트를 파악하는 중...",
+      "경쟁 채널 환경을 조사하는 중...",
+      "콘텐츠 갭 분석 중...",
+      "핵심 인사이트를 도출하는 중...",
+    ],
+  },
+  archetype: {
+    label: "아키타입 분석",
+    model: "Claude Sonnet 4.6",
+    modelColor: "text-orange-500",
+    estimatedSecs: 25,
+    messages: [
+      "오디언스 분석 결과를 검토하는 중...",
+      "캐릭터 아키타입 프레임워크를 적용하는 중...",
+      "각 아키타입의 적합도를 계산하는 중...",
+      "실존 채널 사례를 매핑하는 중...",
+      "3개 아키타입 추천안을 작성하는 중...",
+    ],
+  },
+  archetype_select: {
+    label: "컨셉 생성",
+    model: "Claude Sonnet 4.6",
+    modelColor: "text-orange-500",
+    estimatedSecs: 35,
+    messages: [
+      "선택된 아키타입을 기반으로 구상하는 중...",
+      "캐릭터 세계관을 설계하는 중...",
+      "이름과 외형 방향을 구체화하는 중...",
+      "성격과 말투를 정의하는 중...",
+      "3개 차별화된 컨셉을 완성하는 중...",
+    ],
+  },
+  concept_select: {
+    label: "바이블 작성",
+    model: "Claude Sonnet 4.6",
+    modelColor: "text-orange-500",
+    estimatedSecs: 45,
+    messages: [
+      "전체 리서치와 선택 내용을 통합하는 중...",
+      "캐릭터 정체성과 세계관을 정립하는 중...",
+      "목소리 톤 & 매너를 정의하는 중...",
+      "시그니처 표현과 대사 예시를 작성하는 중...",
+      "비주얼 가이드와 이미지 프롬프트를 완성하는 중...",
+      "콘텐츠 가이드라인을 정리하는 중...",
+      "IP 문서로 최종 정리하는 중...",
+    ],
+  },
+  image_select: {
+    label: "바이블 작성",
+    model: "Claude Sonnet 4.6",
+    modelColor: "text-orange-500",
+    estimatedSecs: 45,
+    messages: [
+      "선택된 이미지를 분석하는 중...",
+      "캐릭터 정체성을 완성하는 중...",
+      "목소리와 성격을 정립하는 중...",
+      "시그니처 대사 예시를 작성하는 중...",
+      "캐릭터 바이블 IP 문서를 생성하는 중...",
+    ],
+  },
+  bible: {
+    label: "바이블 작성",
+    model: "Claude Sonnet 4.6",
+    modelColor: "text-orange-500",
+    estimatedSecs: 45,
+    messages: [
+      "전체 리서치와 선택 내용을 통합하는 중...",
+      "캐릭터 정체성과 세계관을 정립하는 중...",
+      "목소리 톤 & 매너를 정의하는 중...",
+      "시그니처 표현과 대사 예시를 작성하는 중...",
+      "비주얼 가이드와 이미지 프롬프트를 완성하는 중...",
+      "콘텐츠 가이드라인을 정리하는 중...",
+      "IP 문서로 최종 정리하는 중...",
+    ],
+  },
+};
+
 /* ─── 단계 정보 ─────────────────────────────────────────────── */
 
 const STAGES = [
@@ -126,6 +223,96 @@ function currentStep(stage: string) {
   return STAGES.find(s => s.key === stage)?.step ?? 1;
 }
 
+/* ─── 진행 상태 표시 컴포넌트 ────────────────────────────────── */
+
+function RunningIndicator({ stage }: { stage: string }) {
+  const config = STAGE_RUN_CONFIGS[stage];
+  const [elapsed, setElapsed] = useState(0);
+  const [msgIdx, setMsgIdx] = useState(0);
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    setElapsed(0);
+    setMsgIdx(0);
+    intervalRef.current = setInterval(() => {
+      setElapsed(s => s + 1);
+    }, 1000);
+    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
+  }, [stage]);
+
+  // 메시지 순환: 경과 시간 기준으로 다음 메시지로 이동
+  useEffect(() => {
+    if (!config) return;
+    const interval = config.estimatedSecs / config.messages.length;
+    const next = Math.min(Math.floor(elapsed / interval), config.messages.length - 1);
+    setMsgIdx(next);
+  }, [elapsed, config]);
+
+  if (!config) return null;
+
+  // 진행률: estimatedSecs 기준으로 0→90%, 그 이후는 천천히 90→97%로
+  const rawProgress = elapsed / config.estimatedSecs;
+  const progress = rawProgress < 1
+    ? rawProgress * 90
+    : 90 + Math.min((rawProgress - 1) * 7, 7);
+
+  const mins = Math.floor(elapsed / 60);
+  const secs = elapsed % 60;
+  const elapsedStr = mins > 0 ? `${mins}분 ${secs}초` : `${secs}초`;
+
+  return (
+    <Card className="border-primary/30 bg-primary/5">
+      <CardContent className="p-5 space-y-4">
+        {/* 헤더 */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            {/* 애니메이션 점 */}
+            <div className="flex gap-1">
+              {[0, 1, 2].map(i => (
+                <div
+                  key={i}
+                  className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce"
+                  style={{ animationDelay: `${i * 0.15}s` }}
+                />
+              ))}
+            </div>
+            <span className="text-sm font-semibold">{config.label} 진행 중</span>
+          </div>
+          <div className="text-xs text-muted-foreground">{elapsedStr} 경과</div>
+        </div>
+
+        {/* 진행 바 */}
+        <div className="space-y-1">
+          <div className="h-2 bg-muted rounded-full overflow-hidden">
+            <div
+              className="h-full bg-primary rounded-full transition-all duration-1000 ease-out"
+              style={{ width: `${progress.toFixed(1)}%` }}
+            />
+          </div>
+          <div className="flex justify-between text-xs text-muted-foreground">
+            <span>{Math.round(progress)}%</span>
+            <span>예상 {config.estimatedSecs}초</span>
+          </div>
+        </div>
+
+        {/* 현재 작업 메시지 */}
+        <div className="flex items-start gap-2 bg-background/60 rounded-lg p-3 border border-border/50">
+          <div className="w-1.5 h-1.5 rounded-full bg-primary mt-1.5 shrink-0 animate-pulse" />
+          <p className="text-sm text-foreground leading-relaxed">
+            {config.messages[msgIdx]}
+          </p>
+        </div>
+
+        {/* 모델 표시 */}
+        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <span>AI 모델:</span>
+          <span className={`font-medium ${config.modelColor}`}>{config.model}</span>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 /* ─── 메인 컴포넌트 ─────────────────────────────────────────── */
 
 export default function CharacterDesignPage() {
@@ -140,6 +327,7 @@ export default function CharacterDesignPage() {
   const [bible, setBible] = useState<CharacterBible | null>(null);
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
+  const [runningStage, setRunningStage] = useState("");
   const [error, setError] = useState("");
 
   // Image URL 입력 (visual 단계)
@@ -165,8 +353,9 @@ export default function CharacterDesignPage() {
     load();
   }, [load, router]);
 
-  const run = async (action: () => Promise<unknown>) => {
+  const run = async (stageKey: string, action: () => Promise<unknown>) => {
     setRunning(true);
+    setRunningStage(stageKey);
     setError("");
     try {
       const result = await action() as DesignSession & { bible?: CharacterBible; character?: { bible: CharacterBible; name: string } };
@@ -184,6 +373,7 @@ export default function CharacterDesignPage() {
       setError(e instanceof Error ? e.message : "오류가 발생했습니다");
     } finally {
       setRunning(false);
+      setRunningStage("");
     }
   };
 
@@ -250,13 +440,20 @@ export default function CharacterDesignPage() {
           </div>
         )}
 
+        {/* AI 작업 진행 상태 표시 */}
+        {running && runningStage && (
+          <div className="mb-6">
+            <RunningIndicator stage={runningStage} />
+          </div>
+        )}
+
         {/* ── 완성 상태 ─────────────────────────────────────── */}
         {stage === "done" && bible && (
           <BibleView bible={bible} seriesId={seriesId} router={router} />
         )}
 
         {/* ── Stage 1: 오디언스 리서치 실행 ─────────────────── */}
-        {stage === "audience" && (
+        {stage === "audience" && !running && (
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Step 1 — 오디언스 리서치</CardTitle>
@@ -266,21 +463,23 @@ export default function CharacterDesignPage() {
                 이 시리즈의 타겟 오디언스를 심층 분석합니다.
                 누가 보는지, 어떤 캐릭터에 끌리는지, 경쟁 채널과의 차별화 포인트를 분석합니다.
               </p>
-              <p className="text-xs text-muted-foreground">
-                Gemini Pro 사용 · 약 20~30초 소요
-              </p>
+              <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/30 p-2 rounded-lg">
+                <span className="text-blue-500 font-medium">Gemini 2.5 Flash</span>
+                <span>·</span>
+                <span>약 20~30초 소요</span>
+              </div>
               <Button
-                onClick={() => run(() => api.series.characters.design.runAudience(seriesId, charId))}
+                onClick={() => run("audience", () => api.series.characters.design.runAudience(seriesId, charId))}
                 disabled={running}
               >
-                {running ? "분석 중..." : "오디언스 분석 시작"}
+                오디언스 분석 시작
               </Button>
             </CardContent>
           </Card>
         )}
 
         {/* ── Stage 1 결과 + Stage 2 실행 ───────────────────── */}
-        {stage === "archetype" && session.audience_research && (
+        {stage === "archetype" && session.audience_research && !running && (
           <div className="space-y-4">
             <AudienceResearchView research={session.audience_research} />
             <Card>
@@ -292,11 +491,16 @@ export default function CharacterDesignPage() {
                   오디언스 분석 결과를 바탕으로 3가지 캐릭터 아키타입을 추천합니다.
                   각 아키타입의 적합도 점수, 실존 채널 예시, 위험 요소를 함께 제공합니다.
                 </p>
+                <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/30 p-2 rounded-lg">
+                  <span className="text-orange-500 font-medium">Claude Sonnet 4.6</span>
+                  <span>·</span>
+                  <span>약 20~25초 소요</span>
+                </div>
                 <Button
-                  onClick={() => run(() => api.series.characters.design.runArchetypes(seriesId, charId))}
+                  onClick={() => run("archetype", () => api.series.characters.design.runArchetypes(seriesId, charId))}
                   disabled={running}
                 >
-                  {running ? "분석 중..." : "아키타입 분석 →"}
+                  아키타입 분석 →
                 </Button>
               </CardContent>
             </Card>
@@ -304,7 +508,7 @@ export default function CharacterDesignPage() {
         )}
 
         {/* ── Stage 2 결과: 아키타입 선택 ──────────────────────*/}
-        {stage === "archetype_select" && session.archetypes && (
+        {stage === "archetype_select" && session.archetypes && !running && (
           <div className="space-y-4">
             <Card>
               <CardHeader>
@@ -326,33 +530,21 @@ export default function CharacterDesignPage() {
                 key={option.index}
                 option={option}
                 selected={session.selected_archetype_index === option.index}
-                onSelect={() => run(() => api.series.characters.design.selectArchetype(seriesId, charId, option.index))}
+                onSelect={() => {
+                  // 선택만 하고 바로 컨셉 생성 진행
+                  run("archetype_select", async () => {
+                    await api.series.characters.design.selectArchetype(seriesId, charId, option.index);
+                    return api.series.characters.design.runConcepts(seriesId, charId);
+                  });
+                }}
                 disabled={running}
               />
             ))}
-            {session.selected_archetype_index !== undefined && (
-              <Button
-                onClick={() => run(() => api.series.characters.design.runConcepts(seriesId, charId))}
-                disabled={running}
-                className="w-full"
-              >
-                {running ? "컨셉 생성 중..." : "선택 확정 후 컨셉 생성 →"}
-              </Button>
-            )}
           </div>
         )}
 
-        {/* ── Stage 3 진행 중 ──────────────────────────────── */}
-        {stage === "concepts" && (
-          <Card>
-            <CardContent className="py-8 text-center">
-              <p className="text-muted-foreground">캐릭터 컨셉을 생성하는 중입니다...</p>
-            </CardContent>
-          </Card>
-        )}
-
         {/* ── Stage 3 결과: 컨셉 선택 ─────────────────────── */}
-        {stage === "concept_select" && session.concepts && (
+        {stage === "concept_select" && session.concepts && !running && (
           <div className="space-y-4">
             <Card>
               <CardHeader>
@@ -367,7 +559,7 @@ export default function CharacterDesignPage() {
                 key={concept.index}
                 concept={concept}
                 selected={session.selected_concept_index === concept.index}
-                onSelect={() => run(() => api.series.characters.design.selectConcept(seriesId, charId, concept.index))}
+                onSelect={() => run("concept_select", () => api.series.characters.design.selectConcept(seriesId, charId, concept.index))}
                 disabled={running}
               />
             ))}
@@ -375,7 +567,7 @@ export default function CharacterDesignPage() {
         )}
 
         {/* ── Stage 4: 이미지 업로드 ───────────────────────── */}
-        {stage === "visual" && (
+        {stage === "visual" && !running && (
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Step 4 — 비주얼 확정</CardTitle>
@@ -416,7 +608,7 @@ export default function CharacterDesignPage() {
                   onClick={() => {
                     const urls = imageUrlInput.split("\n").map(u => u.trim()).filter(Boolean);
                     if (urls.length === 0) return;
-                    run(() => api.series.characters.design.saveImageUrls(seriesId, charId, urls));
+                    run("image_select", () => api.series.characters.design.saveImageUrls(seriesId, charId, urls));
                   }}
                   disabled={running || !imageUrlInput.trim()}
                 >
@@ -424,10 +616,10 @@ export default function CharacterDesignPage() {
                 </Button>
                 <Button
                   variant="outline"
-                  onClick={() => run(() => api.series.characters.design.saveImageUrls(seriesId, charId, []))}
+                  onClick={() => run("bible", () => api.series.characters.design.saveImageUrls(seriesId, charId, []))}
                   disabled={running}
                 >
-                  이미지 없이 진행
+                  이미지 없이 바이블 작성
                 </Button>
               </div>
             </CardContent>
@@ -435,14 +627,16 @@ export default function CharacterDesignPage() {
         )}
 
         {/* ── Stage 4: 이미지 선택 ─────────────────────────── */}
-        {stage === "image_select" && session.image_urls && session.image_urls.length > 0 && (
+        {stage === "image_select" && session.image_urls && session.image_urls.length > 0 && !running && (
           <div className="space-y-4">
             <Card>
               <CardHeader>
                 <CardTitle className="text-base">Step 4 — 대표 이미지 선택</CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-sm text-muted-foreground">캐릭터의 대표 이미지를 선택하세요.</p>
+                <p className="text-sm text-muted-foreground">
+                  캐릭터의 대표 이미지를 선택하면 바이블 작성이 시작됩니다.
+                </p>
               </CardContent>
             </Card>
             <div className="grid grid-cols-2 gap-3">
@@ -451,27 +645,21 @@ export default function CharacterDesignPage() {
                   key={idx}
                   className={`border-2 rounded-xl overflow-hidden cursor-pointer transition-colors
                     ${session.selected_image_index === idx ? "border-primary" : "border-transparent hover:border-primary/30"}`}
-                  onClick={() => run(() => api.series.characters.design.selectImage(seriesId, charId, idx))}
+                  onClick={() => run("image_select", async () => {
+                    await api.series.characters.design.selectImage(seriesId, charId, idx);
+                    return api.series.characters.design.runBible(seriesId, charId);
+                  })}
                 >
                   <img src={url} alt={`Option ${idx + 1}`} className="w-full aspect-square object-cover" />
-                  <div className="p-2 text-center text-xs text-muted-foreground">옵션 {idx + 1}</div>
+                  <div className="p-2 text-center text-xs text-muted-foreground">클릭하여 선택 + 바이블 작성</div>
                 </div>
               ))}
             </div>
-            {session.selected_image_index !== undefined && (
-              <Button
-                onClick={() => run(() => api.series.characters.design.runBible(seriesId, charId))}
-                disabled={running}
-                className="w-full"
-              >
-                {running ? "바이블 작성 중..." : "캐릭터 바이블 작성 →"}
-              </Button>
-            )}
           </div>
         )}
 
         {/* ── Stage 5: 바이블 실행 (이미지 없는 경우) ──────── */}
-        {stage === "bible" && (
+        {stage === "bible" && !running && (
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Step 5 — 캐릭터 바이블 작성</CardTitle>
@@ -481,11 +669,16 @@ export default function CharacterDesignPage() {
                 지금까지의 리서치와 선택을 바탕으로 완성된 캐릭터 바이블을 작성합니다.
                 이 문서가 이 캐릭터의 모든 것을 정의하는 IP 문서가 됩니다.
               </p>
+              <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/30 p-2 rounded-lg">
+                <span className="text-orange-500 font-medium">Claude Sonnet 4.6</span>
+                <span>·</span>
+                <span>약 40~50초 소요</span>
+              </div>
               <Button
-                onClick={() => run(() => api.series.characters.design.runBible(seriesId, charId))}
+                onClick={() => run("bible", () => api.series.characters.design.runBible(seriesId, charId))}
                 disabled={running}
               >
-                {running ? "작성 중... (약 30초)" : "캐릭터 바이블 완성"}
+                캐릭터 바이블 완성
               </Button>
             </CardContent>
           </Card>
@@ -541,7 +734,7 @@ function ArchetypeCard({
 }) {
   const [expanded, setExpanded] = useState(false);
   return (
-    <Card className={`transition-colors cursor-pointer ${selected ? "border-primary" : "hover:border-primary/30"}`}>
+    <Card className={`transition-colors ${selected ? "border-primary" : "hover:border-primary/30"}`}>
       <CardContent className="p-4 space-y-3">
         <div className="flex items-center justify-between">
           <div>
@@ -594,7 +787,7 @@ function ArchetypeCard({
             {expanded ? "접기" : "자세히"}
           </Button>
           <Button size="sm" className="text-xs h-7" onClick={onSelect} disabled={disabled}>
-            {selected ? "선택됨" : "이 아키타입 선택"}
+            {selected ? "선택됨" : "이 아키타입으로 컨셉 생성 →"}
           </Button>
         </div>
       </CardContent>
@@ -643,7 +836,7 @@ function ConceptCard({
             <div>
               <div className="font-medium mb-1">대사 예시</div>
               {concept.example_dialogues.map((d, i) => (
-                <div key={i} className="bg-muted/30 p-2 rounded italic mb-1">"{d}"</div>
+                <div key={i} className="bg-muted/30 p-2 rounded italic mb-1">&ldquo;{d}&rdquo;</div>
               ))}
             </div>
             <div>
@@ -671,7 +864,7 @@ function ConceptCard({
             {expanded ? "접기" : "자세히"}
           </Button>
           <Button size="sm" className="text-xs h-7" onClick={onSelect} disabled={disabled}>
-            {selected ? "선택됨" : "이 컨셉 선택 →"}
+            {selected ? "선택됨" : "이 컨셉 선택 + 비주얼 확정 →"}
           </Button>
         </div>
       </CardContent>
@@ -775,7 +968,7 @@ function BibleView({
             <div>
               <div className="text-xs font-medium mb-1">시그니처 표현</div>
               {bible.phrase_patterns.map((p, i) => (
-                <p key={i} className="text-xs bg-muted/30 p-2 rounded mb-1 italic">"{p}"</p>
+                <p key={i} className="text-xs bg-muted/30 p-2 rounded mb-1 italic">&ldquo;{p}&rdquo;</p>
               ))}
             </div>
           )}
