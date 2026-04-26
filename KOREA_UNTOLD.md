@@ -31,12 +31,14 @@
 
 ---
 
-## 에피소드 아웃라인 (30편)
+## 에피소드 아웃라인 (33편 — 스페셜 3편 포함)
+
+> 스페셜 에피소드(★)는 현재 인기 콘텐츠와 한국 역사를 연결하는 "양념" 회차
 
 ### Part 1 — Origins (고대~삼국)
 
-| EP | 주제 | K드라마 연결 |
-|----|------|-------------|
+| EP | 주제 | K-culture 연결 |
+|----|------|---------------|
 | 1 | 단군신화 — The Bear Who Became a Woman | - |
 | 2 | 고조선 — Korea's First Kingdom (2333 BCE) | - |
 | 3 | 고구려 — The Empire that Fought China | - |
@@ -44,57 +46,66 @@
 | 5 | 신라 — The Women Warriors & Bone Ranks | - |
 | 6 | 가야 — The Lost Kingdom | - |
 | 7 | **삼국통일** — Why Silla Won (and the price it paid) | - |
+| **★8** | **Kpop Demon Hunters — The Real Korean Monsters Behind the Story** | **Kpop Demon Hunters** |
+
+> EP8 포인트: 드라마 속 도깨비·구미호·저승사자의 실제 한국 신화 기원. 고려·조선 민간신앙과의 연결
 
 ---
 
 ### Part 2 — The Golden Age (고려)
 
-| EP | 주제 | K드라마 연결 |
-|----|------|-------------|
-| 8 | 왕건 — The Merchant Who Became King | 태조 왕건 |
-| 9 | 팔만대장경 — 80,000 Wooden Blocks vs. the Mongols | - |
-| 10 | 몽골 침략 — 30 Years of Resistance | - |
-| 11 | 공민왕 & 기황후 — The Queen Who Ruled the Yuan Empire | **기황후 팩트체크** |
-| 12 | 고려 청자 — The Most Beautiful Pottery in the World | - |
+| EP | 주제 | K-culture 연결 |
+|----|------|---------------|
+| 9 | 왕건 — The Merchant Who Became King | 태조 왕건 |
+| 10 | 팔만대장경 — 80,000 Wooden Blocks vs. the Mongols | - |
+| 11 | 몽골 침략 — 30 Years of Resistance | - |
+| 12 | 공민왕 & 기황후 — The Queen Who Ruled the Yuan Empire | **기황후 팩트체크** |
+| 13 | 고려 청자 — The Most Beautiful Pottery in the World | - |
 
 ---
 
 ### Part 3 — Joseon (조선 전기)
 
-| EP | 주제 | K드라마 연결 |
-|----|------|-------------|
-| 13 | 이성계 — The Archer who Overthrew a Dynasty | **육룡이 나르샤 팩트체크** |
-| 14 | 세종대왕 — The King who Invented an Alphabet | - |
-| 15 | 장영실 — The Slave who Built Korea's First Clock | - |
-| 16 | 조선의 여인들 — Women in Joseon: The Real Rules | **대장금 팩트체크** |
-| 17 | 사화 — When Scholars Got Executed for Writing | - |
-| 18 | 임진왜란 — The Turtle Ships vs. 200,000 Japanese Soldiers | - |
-| 19 | 이순신 — The Admiral who Saved Korea (and died doing it) | - |
+| EP | 주제 | K-culture 연결 |
+|----|------|---------------|
+| 14 | 이성계 — The Archer who Overthrew a Dynasty | **육룡이 나르샤 팩트체크** |
+| 15 | 세종대왕 — The King who Invented an Alphabet | - |
+| 16 | 장영실 — The Slave who Built Korea's First Clock | - |
+| 17 | 조선의 여인들 — Women in Joseon: The Real Rules | **대장금 팩트체크** |
+| 18 | 사화 — When Scholars Got Executed for Writing | - |
+| **★19** | **The Tyrant's Chef — Yeonsangun: History's Most Notorious Korean King** | **폭군의셰프** |
+| 20 | 임진왜란 — The Turtle Ships vs. 200,000 Japanese Soldiers | - |
+| 21 | 이순신 — The Admiral who Saved Korea (and died doing it) | - |
+
+> EP19 포인트: 드라마 속 폭군과 실제 연산군 비교. 사화(EP18) 직후 → 연산군이 사화를 일으킨 장본인
 
 ---
 
 ### Part 4 — Joseon (조선 후기~말기)
 
-| EP | 주제 | K드라마 연결 |
-|----|------|-------------|
-| 20 | 광해군 — The King History Got Wrong | **광해, 왕이 된 남자 팩트체크** |
-| 21 | 영조 & 사도세자 — A Father who Killed His Son | **옷소매 붉은 끝동 팩트체크** |
-| 22 | 흥선대원군 — Korea's Last Strongman | - |
-| 23 | 명성황후 — The Queen Murdered by Japan | **명성황후 팩트체크** |
-| 24 | 구한말 — Korea at the Crossroads | **미스터 션샤인 팩트체크** |
+| EP | 주제 | K-culture 연결 |
+|----|------|---------------|
+| 22 | 광해군 — The King History Got Wrong | **광해, 왕이 된 남자 팩트체크** |
+| 23 | 영조 & 사도세자 — A Father who Killed His Son | **옷소매 붉은 끝동 팩트체크** |
+| 24 | 흥선대원군 — Korea's Last Strongman | - |
+| 25 | 명성황후 — The Queen Murdered by Japan | **명성황후 팩트체크** |
+| 26 | 구한말 — Korea at the Crossroads | **미스터 션샤인 팩트체크** |
+| **★27** | **21st Century Lady — What Actually Happened to the Last Korean Royal Family** | **21세기대군부인** |
+
+> EP27 포인트: 순종 이후 조선 왕실의 실제 운명. 일제강점기 왕족들은 어떻게 살았나. 드라마의 역사적 배경 심화
 
 ---
 
 ### Part 5 — Modern Korea (근현대)
 
-| EP | 주제 | K드라마 연결 |
-|----|------|-------------|
-| 25 | 3.1운동 — One Million People Said No | - |
-| 26 | 독립운동가들 — The Fighters Nobody Talks About | - |
-| 27 | 한국전쟁 — The War that Never Officially Ended | - |
-| 28 | 한강의 기적 — From the Poorest to the Richest in 30 Years | - |
-| 29 | 민주화 운동 — How Korea Built Its Democracy | - |
-| 30 | K-Wave의 기원 — Why Korean Culture Went Global | - |
+| EP | 주제 | K-culture 연결 |
+|----|------|---------------|
+| 28 | 3.1운동 — One Million People Said No | - |
+| 29 | 독립운동가들 — The Fighters Nobody Talks About | - |
+| 30 | 한국전쟁 — The War that Never Officially Ended | - |
+| 31 | 한강의 기적 — From the Poorest to the Richest in 30 Years | - |
+| 32 | 민주화 운동 — How Korea Built Its Democracy | - |
+| 33 | K-Wave의 기원 — Why Korean Culture Went Global | - |
 
 ---
 
