@@ -10,6 +10,23 @@ from app.models.user import User
 from app.models.project import ContentSeries, SeriesEpisode, SeriesCharacter, Project
 from app.dependencies import get_current_user
 
+
+def _pipeline_step(stage_results: dict | None) -> str:
+    """stage_results → 현재 파이프라인 단계 반환"""
+    if not stage_results:
+        return "idle"
+    if stage_results.get("video"):
+        return "video_done"
+    if stage_results.get("images"):
+        return "render_done"
+    if stage_results.get("content"):
+        return "write_done"
+    if stage_results.get("hooks"):
+        return "hooks_done"
+    if stage_results.get("research"):
+        return "research_done"
+    return "idle"
+
 router = APIRouter(prefix="/api/series", tags=["series"])
 
 
@@ -81,7 +98,7 @@ class CharacterUpdate(BaseModel):
 
 # ─── 직렬화 헬퍼 ───────────────────────────────────────────
 
-def _episode_dict(ep: SeriesEpisode) -> dict:
+def _episode_dict(ep: SeriesEpisode, project_stage_results: dict | None = None) -> dict:
     return {
         "id": ep.id,
         "episode_number": ep.episode_number,
@@ -93,6 +110,7 @@ def _episode_dict(ep: SeriesEpisode) -> dict:
         "summary": ep.summary,
         "status": ep.status,
         "project_id": ep.project_id,
+        "pipeline_step": _pipeline_step(project_stage_results),
     }
 
 
@@ -184,9 +202,39 @@ async def get_series(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """시리즈 상세 (에피소드 목록 포함)"""
+    """시리즈 상세 (에피소드 목록 + 파이프라인 단계 포함)"""
     s = await _get_user_series(series_id, current_user.id, db)
-    return _series_dict(s, include_episodes=True)
+
+    # 에피소드에 연결된 프로젝트의 stage_results 일괄 조회
+    project_ids = [ep.project_id for ep in (s.episodes or []) if ep.project_id]
+    project_stage_map: dict[int, dict | None] = {}
+    if project_ids:
+        proj_result = await db.execute(
+            select(Project.id, Project.stage_results).where(Project.id.in_(project_ids))
+        )
+        for pid, sr in proj_result.all():
+            project_stage_map[pid] = sr
+
+    # include_episodes 직접 처리 (stage_results 주입)
+    d = {
+        "id": s.id,
+        "name": s.name,
+        "description": s.description,
+        "market": s.market,
+        "language": s.language,
+        "category": s.category,
+        "visual_style": s.visual_style,
+        "fact_mode": s.fact_mode,
+        "target_platforms": s.target_platforms or [],
+        "current_episode": s.current_episode,
+        "episode_count": len(s.episodes) if s.episodes else 0,
+        "characters": [_character_dict(c) for c in (s.characters or [])],
+        "episodes": [
+            _episode_dict(ep, project_stage_map.get(ep.project_id) if ep.project_id else None)
+            for ep in (s.episodes or [])
+        ],
+    }
+    return d
 
 
 @router.patch("/{series_id}")

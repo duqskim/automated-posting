@@ -21,6 +21,7 @@ interface Episode {
   summary: string | null;
   status: string;
   project_id: number | null;
+  pipeline_step: string; // idle | research_done | hooks_done | write_done | render_done | video_done
 }
 
 interface Character {
@@ -61,6 +62,49 @@ const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
   ready:      { label: "완료",   color: "text-green-500" },
   published:  { label: "발행됨", color: "text-purple-500" },
 };
+
+// pipeline_step 순서 정의
+const PIPELINE_STEPS = [
+  { key: "research_done", label: "리서치" },
+  { key: "hooks_done",    label: "훅" },
+  { key: "write_done",    label: "글쓰기" },
+  { key: "render_done",   label: "이미지" },
+  { key: "video_done",    label: "영상" },
+] as const;
+
+const STEP_ORDER = ["idle", "research_done", "hooks_done", "write_done", "render_done", "video_done"];
+
+function PipelineBar({ step }: { step: string }) {
+  const currentIdx = STEP_ORDER.indexOf(step);
+  return (
+    <div className="flex items-center gap-1 mt-2">
+      {PIPELINE_STEPS.map((s, i) => {
+        const stepIdx = i + 1; // idle=0, research_done=1, ...
+        const done = currentIdx > stepIdx;
+        const active = currentIdx === stepIdx;
+        return (
+          <div key={s.key} className="flex items-center gap-1">
+            <div className="flex flex-col items-center gap-0.5">
+              <div className={`w-2 h-2 rounded-full ${
+                done   ? "bg-green-500" :
+                active ? "bg-blue-500 animate-pulse" :
+                         "bg-muted-foreground/30"
+              }`} />
+              <span className={`text-[9px] leading-none ${
+                done   ? "text-green-500" :
+                active ? "text-blue-500" :
+                         "text-muted-foreground/50"
+              }`}>{s.label}</span>
+            </div>
+            {i < PIPELINE_STEPS.length - 1 && (
+              <div className={`h-px w-3 mb-3 ${done ? "bg-green-500/50" : "bg-muted-foreground/20"}`} />
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 /* ─── 메인 컴포넌트 ─────────────────────────────────────── */
 
@@ -438,6 +482,9 @@ export default function SeriesDetailPage() {
                         </div>
                         {ep.notes && (
                           <p className="text-xs text-muted-foreground mt-1 line-clamp-1">{ep.notes}</p>
+                        )}
+                        {ep.project_id && (
+                          <PipelineBar step={ep.pipeline_step ?? "idle"} />
                         )}
                       </div>
 
