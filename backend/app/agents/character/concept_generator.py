@@ -41,7 +41,7 @@ class ConceptGenerator:
     """Stage 3: 아키타입 기반 캐릭터 컨셉 3가지 생성"""
 
     def __init__(self):
-        self.llm = get_llm_client("writing")
+        self.llm = get_llm_client("character_design")  # Opus — IP 창작
 
     async def generate(
         self,

@@ -136,9 +136,9 @@ const STAGE_RUN_CONFIGS: Record<string, StageRunConfig> = {
   },
   archetype: {
     label: "아키타입 분석",
-    model: "Claude Sonnet 4.6",
-    modelColor: "text-orange-500",
-    estimatedSecs: 25,
+    model: "Claude Opus 4.5",
+    modelColor: "text-purple-500",
+    estimatedSecs: 40,
     messages: [
       "오디언스 분석 결과를 검토하는 중...",
       "캐릭터 아키타입 프레임워크를 적용하는 중...",
@@ -149,9 +149,9 @@ const STAGE_RUN_CONFIGS: Record<string, StageRunConfig> = {
   },
   archetype_select: {
     label: "컨셉 생성",
-    model: "Claude Sonnet 4.6",
-    modelColor: "text-orange-500",
-    estimatedSecs: 35,
+    model: "Claude Opus 4.5",
+    modelColor: "text-purple-500",
+    estimatedSecs: 55,
     messages: [
       "선택된 아키타입을 기반으로 구상하는 중...",
       "캐릭터 세계관을 설계하는 중...",
@@ -162,9 +162,9 @@ const STAGE_RUN_CONFIGS: Record<string, StageRunConfig> = {
   },
   concept_select: {
     label: "바이블 작성",
-    model: "Claude Sonnet 4.6",
-    modelColor: "text-orange-500",
-    estimatedSecs: 45,
+    model: "Claude Opus 4.5",
+    modelColor: "text-purple-500",
+    estimatedSecs: 70,
     messages: [
       "전체 리서치와 선택 내용을 통합하는 중...",
       "캐릭터 정체성과 세계관을 정립하는 중...",
@@ -177,9 +177,9 @@ const STAGE_RUN_CONFIGS: Record<string, StageRunConfig> = {
   },
   image_select: {
     label: "바이블 작성",
-    model: "Claude Sonnet 4.6",
-    modelColor: "text-orange-500",
-    estimatedSecs: 45,
+    model: "Claude Opus 4.5",
+    modelColor: "text-purple-500",
+    estimatedSecs: 70,
     messages: [
       "선택된 이미지를 분석하는 중...",
       "캐릭터 정체성을 완성하는 중...",
@@ -190,9 +190,9 @@ const STAGE_RUN_CONFIGS: Record<string, StageRunConfig> = {
   },
   bible: {
     label: "바이블 작성",
-    model: "Claude Sonnet 4.6",
-    modelColor: "text-orange-500",
-    estimatedSecs: 45,
+    model: "Claude Opus 4.5",
+    modelColor: "text-purple-500",
+    estimatedSecs: 70,
     messages: [
       "전체 리서치와 선택 내용을 통합하는 중...",
       "캐릭터 정체성과 세계관을 정립하는 중...",
@@ -494,7 +494,7 @@ export default function CharacterDesignPage() {
                 <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/30 p-2 rounded-lg">
                   <span className="text-orange-500 font-medium">Claude Sonnet 4.6</span>
                   <span>·</span>
-                  <span>약 20~25초 소요</span>
+                  <span>약 35~50초 소요</span>
                 </div>
                 <Button
                   onClick={() => run("archetype", () => api.series.characters.design.runArchetypes(seriesId, charId))}
@@ -672,7 +672,7 @@ export default function CharacterDesignPage() {
               <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/30 p-2 rounded-lg">
                 <span className="text-orange-500 font-medium">Claude Sonnet 4.6</span>
                 <span>·</span>
-                <span>약 40~50초 소요</span>
+                <span>약 60~80초 소요</span>
               </div>
               <Button
                 onClick={() => run("bible", () => api.series.characters.design.runBible(seriesId, charId))}

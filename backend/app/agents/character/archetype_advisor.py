@@ -40,7 +40,7 @@ class ArchetypeAdvisor:
     """Stage 2: 오디언스 맞춤 아키타입 3가지 추천"""
 
     def __init__(self):
-        self.llm = get_llm_client("writing")  # Claude — 캐릭터 창의성
+        self.llm = get_llm_client("character_design")  # Opus — IP 창작
 
     async def advise(
         self,

@@ -58,7 +58,7 @@ class BibleWriter:
     """Stage 5: 완성된 Character Bible 작성"""
 
     def __init__(self):
-        self.llm = get_llm_client("writing")
+        self.llm = get_llm_client("character_design")  # Opus — IP 창작
 
     async def write(
         self,
