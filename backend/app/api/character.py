@@ -297,6 +297,94 @@ async def select_concept(
     return {"stage": "visual", "selected_index": body.index, "character_name": char.name}
 
 
+# ── Stage 4: Visual — Imagen 4.0 직접 생성 ─────────────────────────────────
+
+@router.post("/{character_id}/design/visual/generate")
+async def generate_character_images(
+    series_id: int,
+    character_id: int,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """캐릭터 이미지를 Imagen 4.0으로 4장 직접 생성 → URL 저장"""
+    import os, re
+    from pathlib import Path
+    from google import genai
+    from google.genai import types
+
+    char = await _get_character(series_id, character_id, user, db)
+    session = char.design_session or {}
+
+    # 컨셉에서 이미지 프롬프트 추출
+    concepts = session.get("concepts", {})
+    concept_index = session.get("selected_concept_index", 0)
+    concept_list = concepts.get("concepts", [])
+
+    base_prompt = char.base_image_prompt or ""
+    if not base_prompt and concept_list and concept_index < len(concept_list):
+        base_prompt = concept_list[concept_index].get("image_prompt", "")
+    if not base_prompt:
+        raise HTTPException(400, "이미지 프롬프트가 없습니다. 컨셉을 먼저 선택하세요.")
+
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        raise HTTPException(500, "GEMINI_API_KEY 미설정")
+
+    # 출력 디렉토리
+    char_img_dir = Path(__file__).parents[2] / "output" / "characters"
+    char_img_dir.mkdir(parents=True, exist_ok=True)
+
+    slug = re.sub(r"[^\w]", "_", char.name or f"char_{character_id}")[:20]
+    style_suffix = (
+        "Photorealistic concept art, high quality, 8K resolution, "
+        "professional character design, dramatic lighting, no text, no watermarks"
+    )
+    final_prompt = f"{base_prompt}. {style_suffix}"
+
+    logger.info(f"[CharacterAPI] Imagen 생성 시작 — char={character_id}, prompt={final_prompt[:80]}...")
+
+    client = genai.Client(api_key=api_key)
+    image_urls = []
+    errors = []
+
+    for i in range(4):
+        try:
+            response = client.models.generate_images(
+                model="imagen-4.0-generate-001",
+                prompt=final_prompt,
+                config=types.GenerateImagesConfig(
+                    aspect_ratio="1:1",
+                    number_of_images=1,
+                    person_generation="allow_adult",
+                    output_mime_type="image/jpeg",
+                    output_compression_quality=90,
+                ),
+            )
+            if response.generated_images:
+                img_bytes = response.generated_images[0].image.image_bytes
+                if img_bytes:
+                    filename = f"{slug}_c{character_id}_{i}.jpg"
+                    (char_img_dir / filename).write_bytes(img_bytes)
+                    image_urls.append(f"/api/characters/{filename}")
+                    logger.info(f"  이미지 {i+1}/4 생성 완료")
+        except Exception as e:
+            errors.append(str(e))
+            logger.warning(f"  이미지 {i+1}/4 실패: {e}")
+
+    if not image_urls:
+        raise HTTPException(500, f"이미지 생성 실패: {'; '.join(errors[:2])}")
+
+    # 세션에 저장
+    session["image_urls"] = image_urls
+    session["stage"] = "image_select"
+    char.design_session = session
+    flag_modified(char, "design_session")
+    db.add(char)
+    await db.commit()
+
+    return {"stage": "image_select", "image_urls": image_urls}
+
+
 # ── Stage 4: Visual (image_urls 수동 입력 또는 외부 생성 후 저장) ──────────
 
 class SaveImageUrlsRequest(BaseModel):

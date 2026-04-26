@@ -218,6 +218,8 @@ export const api = {
             method: "POST",
             body: JSON.stringify({ index }),
           }),
+        generateImages: (seriesId: number, characterId: number) =>
+          apiFetch(`/api/series/${seriesId}/characters/${characterId}/design/visual/generate`, { method: "POST" }),
         saveImageUrls: (seriesId: number, characterId: number, image_urls: string[]) =>
           apiFetch(`/api/series/${seriesId}/characters/${characterId}/design/visual`, {
             method: "POST",

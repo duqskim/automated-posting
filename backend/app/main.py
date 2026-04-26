@@ -109,6 +109,11 @@ _scenes_dir = Path(__file__).parents[1] / "output" / "scenes"
 _scenes_dir.mkdir(parents=True, exist_ok=True)
 app.mount("/api/scenes", StaticFiles(directory=str(_scenes_dir)), name="scenes")
 
+# 캐릭터 이미지 서빙 (Imagen 직접 생성)
+_char_img_dir = Path(__file__).parents[1] / "output" / "characters"
+_char_img_dir.mkdir(parents=True, exist_ok=True)
+app.mount("/api/characters", StaticFiles(directory=str(_char_img_dir)), name="characters")
+
 # 영상 파일 서빙
 _video_dir = Path(__file__).parents[1] / "output" / "video"
 _video_dir.mkdir(parents=True, exist_ok=True)

@@ -188,6 +188,19 @@ const STAGE_RUN_CONFIGS: Record<string, StageRunConfig> = {
       "캐릭터 바이블 IP 문서를 생성하는 중...",
     ],
   },
+  visual_generate: {
+    label: "Imagen 4.0 이미지 생성",
+    model: "Imagen 4.0 (Google)",
+    modelColor: "text-blue-500",
+    estimatedSecs: 50,
+    messages: [
+      "캐릭터 비주얼 프롬프트를 분석하는 중...",
+      "Imagen 4.0으로 이미지 1/4 생성 중...",
+      "Imagen 4.0으로 이미지 2/4 생성 중...",
+      "Imagen 4.0으로 이미지 3/4 생성 중...",
+      "Imagen 4.0으로 이미지 4/4 생성 중...",
+    ],
+  },
   bible: {
     label: "바이블 작성",
     model: "Claude Opus 4.5",
@@ -566,13 +579,14 @@ export default function CharacterDesignPage() {
           </div>
         )}
 
-        {/* ── Stage 4: 이미지 업로드 ───────────────────────── */}
+        {/* ── Stage 4: 이미지 생성/업로드 ─────────────────── */}
         {stage === "visual" && !running && (
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Step 4 — 비주얼 확정</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-5">
+              {/* 이미지 프롬프트 표시 */}
               {session.concepts?.concepts[session.selected_concept_index ?? 0] && (
                 <div className="p-3 bg-muted/20 rounded-lg">
                   <div className="text-xs text-muted-foreground mb-1">이미지 생성 프롬프트</div>
@@ -592,35 +606,71 @@ export default function CharacterDesignPage() {
                   </Button>
                 </div>
               )}
-              <p className="text-sm text-muted-foreground">
-                위 프롬프트로 Midjourney, Adobe Firefly, 또는 Imagen에서 이미지를 생성한 후
-                이미지 URL을 붙여넣으세요. 여러 개 입력 가능합니다 (줄바꿈으로 구분).
-              </p>
-              <textarea
-                placeholder="https://example.com/character1.png&#10;https://example.com/character2.png"
-                value={imageUrlInput}
-                onChange={e => setImageUrlInput(e.target.value)}
-                rows={4}
-                className="w-full p-2 text-sm bg-background border border-input rounded-lg resize-none focus:outline-none focus:ring-1 focus:ring-primary font-mono"
-              />
-              <div className="flex gap-2">
+
+              {/* 옵션 1: Imagen 직접 생성 */}
+              <div className="rounded-xl border-2 border-primary/20 bg-primary/5 p-4 space-y-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 rounded-full bg-blue-500" />
+                  <span className="text-sm font-semibold">Imagen 4.0으로 바로 생성</span>
+                  <Badge variant="outline" className="text-xs text-blue-500 border-blue-500/30">추천</Badge>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  위 프롬프트로 Google Imagen 4.0이 캐릭터 이미지 4장을 자동 생성합니다. 생성 후 마음에 드는 1장을 선택하세요.
+                </p>
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <span className="text-blue-500 font-medium">Imagen 4.0</span>
+                  <span>·</span>
+                  <span>약 40~60초 소요 · 4장 생성</span>
+                </div>
                 <Button
-                  onClick={() => {
-                    const urls = imageUrlInput.split("\n").map(u => u.trim()).filter(Boolean);
-                    if (urls.length === 0) return;
-                    run("image_select", () => api.series.characters.design.saveImageUrls(seriesId, charId, urls));
-                  }}
-                  disabled={running || !imageUrlInput.trim()}
-                >
-                  이미지 저장 →
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => run("bible", () => api.series.characters.design.saveImageUrls(seriesId, charId, []))}
+                  onClick={() => run("visual_generate", () => api.series.characters.design.generateImages(seriesId, charId))}
                   disabled={running}
                 >
-                  이미지 없이 바이블 작성
+                  Imagen으로 생성 →
                 </Button>
+              </div>
+
+              {/* 구분선 */}
+              <div className="flex items-center gap-3">
+                <div className="flex-1 h-px bg-border" />
+                <span className="text-xs text-muted-foreground">또는 직접 URL 입력</span>
+                <div className="flex-1 h-px bg-border" />
+              </div>
+
+              {/* 옵션 2: 외부 이미지 URL */}
+              <div className="space-y-2">
+                <p className="text-xs text-muted-foreground">
+                  Midjourney, Adobe Firefly 등 다른 도구로 생성한 이미지 URL을 붙여넣으세요.
+                </p>
+                <textarea
+                  placeholder="https://example.com/character1.png&#10;https://example.com/character2.png"
+                  value={imageUrlInput}
+                  onChange={e => setImageUrlInput(e.target.value)}
+                  rows={3}
+                  className="w-full p-2 text-sm bg-background border border-input rounded-lg resize-none focus:outline-none focus:ring-1 focus:ring-primary font-mono"
+                />
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const urls = imageUrlInput.split("\n").map(u => u.trim()).filter(Boolean);
+                      if (urls.length === 0) return;
+                      run("image_select", () => api.series.characters.design.saveImageUrls(seriesId, charId, urls));
+                    }}
+                    disabled={running || !imageUrlInput.trim()}
+                  >
+                    URL로 저장 →
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => run("bible", () => api.series.characters.design.saveImageUrls(seriesId, charId, []))}
+                    disabled={running}
+                  >
+                    이미지 없이 진행
+                  </Button>
+                </div>
               </div>
             </CardContent>
           </Card>
