@@ -250,7 +250,8 @@ async def produce_video(
     aspect_ratio: str = "16:9",
     tts_voice_id: str = "21m00Tcm4TlvDq8ikWAM",
     with_tts: bool = False,
-    tts_provider: str = "none",  # "none" | "gemini" | "elevenlabs"
+    tts_provider: str = "none",   # "none" | "gemini" | "elevenlabs"
+    bgm_category: str = "none",   # "none" | "cinematic" | "ambient" | "upbeat" | "dramatic"
 ) -> dict:
     """
     Step 4 씬 이미지 → Veo 클립 → moviepy 조립 → 영상
@@ -336,6 +337,24 @@ async def produce_video(
     )
 
     result["clip_paths"] = [str(p) for p in generated_clips if p]
+
+    # Step 4: BGM 믹싱
+    if bgm_category != "none" and result.get("full_video"):
+        logger.info(f"  [Step 4] BGM 믹싱 시작: {bgm_category}")
+        try:
+            from app.agents.media.bgm_manager import select_bgm, mix_bgm_into_video
+            full_path_obj = Path(result["full_video"])
+            duration = result.get("duration", 60.0)
+            bgm_path = await asyncio.to_thread(select_bgm, bgm_category, duration, slug)
+            if bgm_path:
+                bgm_output = OUTPUT_DIR / f"{slug}_{platform}_bgm.mp4"
+                mixed = await asyncio.to_thread(mix_bgm_into_video, full_path_obj, bgm_path, bgm_output)
+                if mixed:
+                    result["full_video"] = str(mixed)
+                    result["bgm_category"] = bgm_category
+                    logger.info(f"  [BGM] 믹싱 완료 → {bgm_output.name}")
+        except Exception as e:
+            logger.warning(f"  [BGM] 실패 (BGM 없이 계속): {e}")
 
     logger.info(f"=== VideoProduction 완료: {result.get('full_video', 'FAILED')} ===")
     return result

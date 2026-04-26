@@ -121,6 +121,7 @@ export default function ProjectDetailPage() {
   });
   const [videoPlatform, setVideoPlatform] = useState("youtube");
   const [ttsPlatform, setTtsPlatform] = useState<"none" | "gemini" | "elevenlabs">("gemini");
+  const [bgmCategory, setBgmCategory] = useState<"none" | "cinematic" | "ambient" | "upbeat" | "dramatic">("cinematic");
   const [loading, setLoading] = useState<string | null>(null); // 로딩 중인 스텝 이름
   const [error, setError] = useState("");
 
@@ -299,7 +300,7 @@ export default function ProjectDetailPage() {
     setLoading("video");
     setError("");
     try {
-      const res = await api.pipeline.runVideo(projectId, videoPlatform, ttsPlatform);
+      const res = await api.pipeline.runVideo(projectId, videoPlatform, ttsPlatform, bgmCategory);
       setStage(prev => ({
         ...prev,
         current_step: "video_done",
@@ -936,10 +937,37 @@ export default function ProjectDetailPage() {
                     </div>
                   </div>
 
+                  {/* BGM 선택 */}
+                  <div>
+                    <div className="text-xs text-muted-foreground mb-2 font-medium">배경음악 (BGM)</div>
+                    <div className="flex gap-2 flex-wrap">
+                      {[
+                        { key: "none",      label: "없음" },
+                        { key: "cinematic", label: "🎻 Cinematic (역사/다큐)" },
+                        { key: "ambient",   label: "🌊 Ambient (잔잔)" },
+                        { key: "upbeat",    label: "✨ Upbeat (경쾌)" },
+                        { key: "dramatic",  label: "⚡ Dramatic (긴장)" },
+                      ].map(({ key, label }) => (
+                        <button
+                          key={key}
+                          onClick={() => setBgmCategory(key as typeof bgmCategory)}
+                          className={`px-3 py-1.5 rounded-lg text-sm border transition-all ${
+                            bgmCategory === key
+                              ? "border-primary bg-primary/10 text-primary"
+                              : "border-border bg-muted/20 text-muted-foreground hover:border-primary/40"
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
                   <div className="p-3 bg-muted/20 rounded-lg text-xs text-muted-foreground space-y-1">
                     <div className="font-medium text-foreground mb-1">플랫폼: {videoPlatform}</div>
                     <div>🎬 Veo로 슬라이드당 씬 클립 생성</div>
                     {ttsPlatform !== "none" && <div>🎙️ {ttsPlatform === "gemini" ? "Gemini TTS" : "ElevenLabs"} 나레이션 생성</div>}
+                    {bgmCategory !== "none" && <div>🎵 {bgmCategory} BGM 믹싱</div>}
                     <div>🔗 moviepy로 클립 + 나레이션 조립</div>
                     <div className="text-yellow-500">⏱️ {ttsPlatform !== "none" ? "나레이션 포함 " : ""}슬라이드 수에 따라 5~15분 소요</div>
                   </div>

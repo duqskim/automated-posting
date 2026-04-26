@@ -504,7 +504,8 @@ async def regenerate_single_image(
 
 class VideoRequest(BaseModel):
     platform: str = "youtube"
-    tts_provider: str = "none"  # "none" | "gemini" | "elevenlabs"
+    tts_provider: str = "none"   # "none" | "gemini" | "elevenlabs"
+    bgm_category: str = "none"   # "none" | "cinematic" | "ambient" | "upbeat" | "dramatic"
 
 
 @router.post("/{project_id}/stage/video")
@@ -533,6 +534,7 @@ async def run_stage_video(
             scene_image_paths=sr.get("images", []),
             tts_provider=body.tts_provider,
             video_plan_dict=sr.get("video_plan"),
+            bgm_category=body.bgm_category,
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"영상 제작 실패: {e}")

@@ -114,11 +114,11 @@ export const api = {
         body: JSON.stringify({ platform }),
       }),
 
-    /** Stage 7: 영상 제작 (Veo + TTS + moviepy) */
-    runVideo: (projectId: number, platform: string = "youtube", ttsProvider: string = "none") =>
+    /** Stage 7: 영상 제작 (Veo + TTS + moviepy + BGM) */
+    runVideo: (projectId: number, platform: string = "youtube", ttsProvider: string = "none", bgmCategory: string = "none") =>
       apiFetch(`/api/pipeline/${projectId}/stage/video`, {
         method: "POST",
-        body: JSON.stringify({ platform, tts_provider: ttsProvider }),
+        body: JSON.stringify({ platform, tts_provider: ttsProvider, bgm_category: bgmCategory }),
       }),
   },
   accounts: {

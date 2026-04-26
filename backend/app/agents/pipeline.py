@@ -728,6 +728,7 @@ class PipelineController:
         with_tts: bool = False,
         tts_provider: str = "none",
         video_plan_dict: dict | None = None,
+        bgm_category: str = "none",
     ) -> dict:
         """Stage 5: 씬 이미지 → Veo 클립 → moviepy 조립 → VideoReviewer → ShortsExtractor"""
         from app.agents.media.video_production import produce_video
@@ -766,6 +767,7 @@ class PipelineController:
             aspect_ratio=aspect_ratio,
             with_tts=with_tts,
             tts_provider=tts_provider,
+            bgm_category=bgm_category,
         )
 
         # Step 2: Video Reviewer — 품질 검수
