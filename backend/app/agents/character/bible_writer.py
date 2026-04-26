@@ -174,7 +174,7 @@ Respond in JSON:
   ]
 }}"""
 
-        result = await self.llm.generate_json(prompt)
+        result = await self.llm.generate_json(prompt, max_tokens=8192)
         if not result:
             logger.error("[BibleWriter] LLM 응답 없음")
             return None

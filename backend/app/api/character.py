@@ -306,7 +306,7 @@ async def generate_character_images(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """캐릭터 이미지를 Imagen 4.0으로 4장 직접 생성 → URL 저장"""
+    """캐릭터 이미지를 Gemini 3 Pro Image로 4장 직접 생성 → URL 저장"""
     import os, re
     from pathlib import Path
     from google import genai
@@ -331,17 +331,19 @@ async def generate_character_images(
         raise HTTPException(500, "GEMINI_API_KEY 미설정")
 
     # 출력 디렉토리
+    import base64
+
     char_img_dir = Path(__file__).parents[2] / "output" / "characters"
     char_img_dir.mkdir(parents=True, exist_ok=True)
 
     slug = re.sub(r"[^\w]", "_", char.name or f"char_{character_id}")[:20]
     style_suffix = (
-        "Photorealistic concept art, high quality, 8K resolution, "
-        "professional character design, dramatic lighting, no text, no watermarks"
+        "High quality character concept art, professional illustration, "
+        "dramatic lighting, detailed, no text, no watermarks"
     )
     final_prompt = f"{base_prompt}. {style_suffix}"
 
-    logger.info(f"[CharacterAPI] Imagen 생성 시작 — char={character_id}, prompt={final_prompt[:80]}...")
+    logger.info(f"[CharacterAPI] Gemini 3 Pro Image 생성 시작 — char={character_id}")
 
     client = genai.Client(api_key=api_key)
     image_urls = []
@@ -349,27 +351,58 @@ async def generate_character_images(
 
     for i in range(4):
         try:
-            response = client.models.generate_images(
-                model="imagen-4.0-generate-001",
-                prompt=final_prompt,
-                config=types.GenerateImagesConfig(
-                    aspect_ratio="1:1",
-                    number_of_images=1,
-                    person_generation="allow_adult",
-                    output_mime_type="image/jpeg",
-                    output_compression_quality=90,
+            response = client.models.generate_content(
+                model="gemini-3-0-pro-image-generation-exp",
+                contents=final_prompt,
+                config=types.GenerateContentConfig(
+                    response_modalities=["IMAGE", "TEXT"],
                 ),
             )
-            if response.generated_images:
-                img_bytes = response.generated_images[0].image.image_bytes
-                if img_bytes:
-                    filename = f"{slug}_c{character_id}_{i}.jpg"
-                    (char_img_dir / filename).write_bytes(img_bytes)
-                    image_urls.append(f"/api/characters/{filename}")
-                    logger.info(f"  이미지 {i+1}/4 생성 완료")
+            # 이미지 파트 추출
+            img_bytes = None
+            for part in (response.candidates[0].content.parts if response.candidates else []):
+                if hasattr(part, "inline_data") and part.inline_data:
+                    img_bytes = part.inline_data.data
+                    break
+            if img_bytes:
+                import base64
+                raw = base64.b64decode(img_bytes) if isinstance(img_bytes, str) else img_bytes
+                filename = f"{slug}_c{character_id}_{i}.jpg"
+                (char_img_dir / filename).write_bytes(raw)
+                image_urls.append(f"/api/characters/{filename}")
+                logger.info(f"  이미지 {i+1}/4 생성 완료 ({len(raw)//1024}KB)")
+            else:
+                errors.append(f"이미지 {i+1}: 빈 응답")
+                logger.warning(f"  이미지 {i+1}/4: 이미지 파트 없음")
         except Exception as e:
             errors.append(str(e))
             logger.warning(f"  이미지 {i+1}/4 실패: {e}")
+
+    # Gemini 3 Pro 실패 시 Imagen 4.0으로 fallback
+    if not image_urls:
+        logger.info("[CharacterAPI] Gemini 3 Pro 실패 → Imagen 4.0 fallback")
+        for i in range(4):
+            try:
+                response = client.models.generate_images(
+                    model="imagen-4.0-generate-001",
+                    prompt=final_prompt,
+                    config=types.GenerateImagesConfig(
+                        aspect_ratio="1:1",
+                        number_of_images=1,
+                        person_generation="allow_adult",
+                        output_mime_type="image/jpeg",
+                        output_compression_quality=90,
+                    ),
+                )
+                if response.generated_images:
+                    img_bytes = response.generated_images[0].image.image_bytes
+                    if img_bytes:
+                        filename = f"{slug}_c{character_id}_{i}.jpg"
+                        (char_img_dir / filename).write_bytes(img_bytes)
+                        image_urls.append(f"/api/characters/{filename}")
+                        logger.info(f"  [Fallback] 이미지 {i+1}/4 완료")
+            except Exception as e:
+                logger.warning(f"  [Fallback] 이미지 {i+1}/4 실패: {e}")
 
     if not image_urls:
         raise HTTPException(500, f"이미지 생성 실패: {'; '.join(errors[:2])}")

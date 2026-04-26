@@ -189,16 +189,16 @@ const STAGE_RUN_CONFIGS: Record<string, StageRunConfig> = {
     ],
   },
   visual_generate: {
-    label: "Imagen 4.0 이미지 생성",
-    model: "Imagen 4.0 (Google)",
+    label: "Gemini 3 Pro Image 생성",
+    model: "Gemini 3 Pro Image (Google)",
     modelColor: "text-blue-500",
-    estimatedSecs: 50,
+    estimatedSecs: 60,
     messages: [
       "캐릭터 비주얼 프롬프트를 분석하는 중...",
-      "Imagen 4.0으로 이미지 1/4 생성 중...",
-      "Imagen 4.0으로 이미지 2/4 생성 중...",
-      "Imagen 4.0으로 이미지 3/4 생성 중...",
-      "Imagen 4.0으로 이미지 4/4 생성 중...",
+      "Gemini 3 Pro로 이미지 1/4 생성 중...",
+      "Gemini 3 Pro로 이미지 2/4 생성 중...",
+      "Gemini 3 Pro로 이미지 3/4 생성 중...",
+      "Gemini 3 Pro로 이미지 4/4 생성 중...",
     ],
   },
   bible: {
@@ -615,10 +615,10 @@ export default function CharacterDesignPage() {
                   <Badge variant="outline" className="text-xs text-blue-500 border-blue-500/30">추천</Badge>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  위 프롬프트로 Google Imagen 4.0이 캐릭터 이미지 4장을 자동 생성합니다. 생성 후 마음에 드는 1장을 선택하세요.
+                  위 프롬프트로 Gemini 3 Pro Image가 캐릭터 이미지 4장을 자동 생성합니다. 생성 후 마음에 드는 1장을 선택하세요.
                 </p>
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <span className="text-blue-500 font-medium">Imagen 4.0</span>
+                  <span className="text-blue-500 font-medium">Gemini 3 Pro Image</span>
                   <span>·</span>
                   <span>약 40~60초 소요 · 4장 생성</span>
                 </div>
@@ -626,7 +626,7 @@ export default function CharacterDesignPage() {
                   onClick={() => run("visual_generate", () => api.series.characters.design.generateImages(seriesId, charId))}
                   disabled={running}
                 >
-                  Imagen으로 생성 →
+                  Gemini로 생성 →
                 </Button>
               </div>
 

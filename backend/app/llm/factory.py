@@ -15,7 +15,7 @@ def get_llm_client(role: str) -> BaseLLMClient:
     - analysis: Gemini 2.5 Flash (성과 데이터 분석 — 비용 효율)
     """
     if role == "character_design":
-        return ClaudeClient(model="claude-opus-4-5")  # IP 창작은 Opus
+        return ClaudeClient(model="claude-opus-4-6")  # IP 창작은 Opus
     elif role in ("research", "keyword_expansion"):
         return GeminiClient(model="gemini-2.5-pro")  # 분석/추론은 Pro
     elif role in ("writing", "hooksmith", "copywriting", "editing"):
