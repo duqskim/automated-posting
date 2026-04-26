@@ -68,7 +68,7 @@ Stage 1: 오디언스 리서치 (Gemini 2.5 Pro)
 Stage 2: 아키타입 추천 3개 (Claude Opus 4.6)
 Stage 3: 컨셉 생성 3개 (Claude Opus 4.6)
 Stage 4: 비주얼 이미지 생성 (Gemini 3 Pro Image)
-Stage 5: Character Bible 작성 (Claude Opus 4.6, max_tokens=8192)
+Stage 5: Character Bible 작성 (Claude Opus 4.6, max_tokens=16384)
 ```
 
 완성된 캐릭터 (status=active)는 파이프라인 write/render 단계에 자동 주입됨.
@@ -88,6 +88,7 @@ Stage 5: Character Bible 작성 (Claude Opus 4.6, max_tokens=8192)
 | 캐릭터 → 파이프라인 자동 연동 | 글쓰기/이미지에 캐릭터 목소리/비주얼 주입 |
 | 이미지 생성 Gemini 3 Pro Image | Imagen 4.0 fallback |
 | 캐릭터 생성 진행 상태 표시 | 단계별 진행바 + 모델명 |
+| 완성 화면에 캐릭터 이미지 표시 | BibleView 헤더에 선택 이미지 |
 
 ### 예정
 

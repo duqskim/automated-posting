@@ -462,7 +462,16 @@ export default function CharacterDesignPage() {
 
         {/* ── 완성 상태 ─────────────────────────────────────── */}
         {stage === "done" && bible && (
-          <BibleView bible={bible} seriesId={seriesId} router={router} />
+          <BibleView
+            bible={bible}
+            seriesId={seriesId}
+            router={router}
+            imageUrl={
+              session.image_urls && session.selected_image_index !== undefined
+                ? session.image_urls[session.selected_image_index]
+                : session.image_urls?.[0]
+            }
+          />
         )}
 
         {/* ── Stage 1: 오디언스 리서치 실행 ─────────────────── */}
@@ -926,22 +935,40 @@ function BibleView({
   bible,
   seriesId,
   router,
+  imageUrl,
 }: {
   bible: CharacterBible;
   seriesId: number;
   router: ReturnType<typeof useRouter>;
+  imageUrl?: string;
 }) {
+  const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+  const fullImageUrl = imageUrl
+    ? imageUrl.startsWith("http") ? imageUrl : `${API_URL}${imageUrl}`
+    : null;
+
   return (
     <div className="space-y-4">
       {/* 헤더 */}
       <Card className="border-primary/30 bg-primary/5">
         <CardContent className="p-5">
-          <div className="flex items-start justify-between mb-3">
-            <div>
-              <h2 className="text-2xl font-bold">{bible.name}</h2>
-              <p className="text-muted-foreground italic">{bible.tagline}</p>
+          <div className="flex items-start gap-4 mb-3">
+            {fullImageUrl && (
+              <img
+                src={fullImageUrl}
+                alt={bible.name}
+                className="w-24 h-24 rounded-xl object-cover border border-primary/20 flex-shrink-0"
+              />
+            )}
+            <div className="flex-1">
+              <div className="flex items-start justify-between">
+                <div>
+                  <h2 className="text-2xl font-bold">{bible.name}</h2>
+                  <p className="text-muted-foreground italic">{bible.tagline}</p>
+                </div>
+                <Badge className="bg-green-500/10 text-green-500 border-green-500/20">완성</Badge>
+              </div>
             </div>
-            <Badge className="bg-green-500/10 text-green-500 border-green-500/20">완성</Badge>
           </div>
           <div className="flex gap-2">
             <Badge variant="outline" className="text-xs">{bible.archetype}</Badge>
