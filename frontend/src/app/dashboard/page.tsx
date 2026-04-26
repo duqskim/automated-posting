@@ -166,6 +166,9 @@ export default function DashboardPage() {
           <Link href="/accounts">
             <Button variant="outline">SNS 계정 관리</Button>
           </Link>
+          <Link href="/plan">
+            <Button variant="outline">Korea Untold 플랜</Button>
+          </Link>
         </div>
 
         {/* Series List */}
