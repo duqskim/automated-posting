@@ -318,7 +318,7 @@ class CreativeDirectorAgent:
     def _build_template_data(
         self, slide_text: str, content_type: str, slide_index: int,
         total_slides: int, content: PlatformContent, theme: dict,
-        topic: str = "",
+        topic: str = "", image_prompt: str = "",
     ) -> dict:
         """슬라이드 텍스트 → 템플릿용 데이터 변환"""
         import re as _re
@@ -361,8 +361,17 @@ class CreativeDirectorAgent:
             unit_only = _re3.sub(r'[\d,.]', '', hero_num).strip()
             number_size = 160 if len(num_only) <= 3 else 120 if len(num_only) <= 5 else 90
 
-            # 차트 데이터 추출
+            # 차트 데이터 추출 (image_prompt 힌트 우선 사용)
             chart_data = self._extract_chart_data(slide_text)
+            prompt_lower = image_prompt.lower()
+            if "링차트" in prompt_lower or "ring" in prompt_lower or "도넛" in prompt_lower:
+                import re as _re4
+                pct_match = _re4.search(r'(\d+(?:\.\d+)?)\s*%', image_prompt + " " + slide_text)
+                if pct_match:
+                    chart_data = {"chart_type": "ring", "chart_value": float(pct_match.group(1))}
+            elif "막대" in prompt_lower or "bar" in prompt_lower or "그래프" in prompt_lower:
+                if not chart_data.get("chart_type"):
+                    chart_data = self._extract_chart_data(slide_text) or {}
 
             base_data.update({
                 "number": num_only,
@@ -528,6 +537,8 @@ class CreativeDirectorAgent:
         prev_template = None
         total = len(content.body)
 
+        image_prompts = content.image_prompts or []
+
         for i, slide_text in enumerate(content.body):
             ctype = "explanation"
             if i < len(classifications):
@@ -538,10 +549,21 @@ class CreativeDirectorAgent:
             elif i == total - 1:
                 ctype = "cta"
 
+            # image_prompt로 콘텐츠 타입 보강
+            img_prompt = image_prompts[i] if i < len(image_prompts) else ""
+            prompt_lower = img_prompt.lower()
+            if ctype not in ("hook", "cta"):
+                if "비교" in prompt_lower or " vs " in prompt_lower:
+                    ctype = "comparison"
+                elif "링차트" in prompt_lower or "막대" in prompt_lower or "차트" in prompt_lower or "그래프" in prompt_lower:
+                    ctype = "data"
+                elif "목록" in prompt_lower or "리스트" in prompt_lower or "아이콘" in prompt_lower:
+                    ctype = "list"
+
             template_name = self._select_template(ctype, prev_template)
             template_data = self._build_template_data(
                 slide_text, ctype, i + 1, total, content, theme,
-                topic=content_plan.topic,
+                topic=content_plan.topic, image_prompt=img_prompt,
             )
 
             slides.append(SlideDesign(

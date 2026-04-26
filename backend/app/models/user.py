@@ -18,3 +18,4 @@ class User(Base, TimestampMixin):
     sns_accounts = relationship("SNSAccount", back_populates="user", lazy="selectin")
     projects = relationship("Project", back_populates="user", lazy="selectin")
     brand_profiles = relationship("BrandProfile", back_populates="user", lazy="selectin")
+    series = relationship("ContentSeries", back_populates="user", lazy="selectin")

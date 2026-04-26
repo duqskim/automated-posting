@@ -20,6 +20,7 @@ class PlatformContent:
     caption: str
     hashtags: list[str]
     cta: str  # Call to Action
+    image_prompts: list[str] = field(default_factory=list)  # 슬라이드별 이미지 생성 프롬프트
     metadata: dict = field(default_factory=dict)  # 플랫폼별 추가 데이터
 
 
@@ -46,6 +47,7 @@ class CopywriterAgent:
         hook: str,
         research: ResearchResult,
         series_context: str | None = None,
+        fact_corrections: list[dict] | None = None,
     ) -> PlatformContent | None:
         """단일 플랫폼용 콘텐츠 생성 (독립 LLM 호출)"""
 
@@ -58,11 +60,23 @@ class CopywriterAgent:
 - 마지막 슬라이드: CTA + 핵심 요약
 - 해시태그: {self.profile.hashtag.count}개""",
 
-            "youtube": f"""YouTube 롱폼 대본 (10~15분):
-- 인트로: 훅 (첫 30초 안에 시청자 잡기, "{hook}")
-- 구조: 문제 제기 → 해결 과정 → 핵심 인사이트 → 결론
-- B-roll 큐 표시: [B-ROLL: 설명]
-- 나레이션 톤: {self.profile.tone}""",
+            "youtube": f"""YouTube 롱폼 나레이션 대본 (목표: 10~15분 영상):
+
+슬라이드 구성 — 반드시 20~25개:
+  슬라이드 1 (인트로/훅): 첫 30초 안에 시청자를 잡는 강렬한 오프닝. "{hook}" 사용.
+  슬라이드 2~4 (배경): 왜 이 주제가 중요한가 / 문제 제기
+  슬라이드 5~18 (본론): 핵심 내용을 챕터 단위로 전개 (챕터당 3~5슬라이드)
+  슬라이드 19~22 (심화): 놀라운 반전 / 숨겨진 사실 / 현대적 의미
+  슬라이드 23~25 (아웃트로): 요약 + 다음 영상 예고 + 구독 CTA
+
+각 슬라이드 텍스트 작성 규칙:
+  ★ 가장 중요한 규칙: 슬라이드당 반드시 400~500자 분량으로 작성할 것 (한국어 글자 수 기준, 공백 포함)
+  ★ 이는 TTS 나레이션 약 1분 분량에 해당. 400자 미만이면 반드시 내용을 더 추가할 것.
+  - 반드시 완전한 나레이션 문장으로 작성 (bullet point 절대 금지)
+  - 자연스러운 구어체 문장 ({self.profile.tone})
+  - 각 슬라이드는 앞 슬라이드에서 자연스럽게 이어지는 흐름
+  - 청중에게 직접 말하는 형식 ("여러분", "생각해보세요" 등)
+  - 예시, 수치, 구체적 사례를 충분히 포함해서 길이를 채울 것""",
 
             "youtube_shorts": f"""YouTube Shorts 대본 (30~45초):
 - 첫 1.5초: 패턴 인터럽트 ("{hook}")
@@ -107,47 +121,110 @@ class CopywriterAgent:
 
         format_guide = format_guides.get(platform, f"{platform} 플랫폼에 적합한 포맷으로")
 
+        lang = self.profile.language  # "ko", "en", "ja"
+        LANG_NAMES = {"ko": "Korean", "en": "English", "ja": "Japanese"}
+        lang_name = LANG_NAMES.get(lang, lang)
+
         series_prompt = ""
         if series_context:
-            series_prompt = f"\n\n시리즈 컨텍스트 (이전 회차 참조):\n{series_context}"
+            series_prompt = f"\n\nSeries context (reference previous episode):\n{series_context}" \
+                if lang == "en" else \
+                f"\n\nシリーズコンテキスト（前回参照）:\n{series_context}" \
+                if lang == "ja" else \
+                f"\n\n시리즈 컨텍스트 (이전 회차 참조):\n{series_context}"
 
-        prompt = f"""주제: "{topic}"
-시장: {self.profile.display_name}
-언어: {self.profile.language}
-톤: {self.profile.tone}
-정보 밀도: {self.profile.info_density}
-면책 조항: {self.profile.content_rules.disclaimer_finance}
-AI 표기: {self.profile.content_rules.ai_disclosure}
+        fact_correction_prompt = ""
+        if fact_corrections:
+            lines = "\n".join(
+                f'- "{c["claim"]}" → {c["note"]}'
+                for c in fact_corrections
+                if c.get("status") == "disputed"
+            )
+            if lines:
+                fact_correction_prompt = (
+                    f"\n\n[FACT CORRECTIONS — 이전 팩트체크에서 발견된 오류. 반드시 수정해서 작성할 것]\n{lines}"
+                )
 
-리서치에서 발견한 성공 구조:
+        # YouTube는 image_prompts 제외 (토큰 절약 → body 텍스트 길이 확보, ImagePrompterAgent가 별도 생성)
+        if platform == "youtube":
+            json_schema = f"""Respond in JSON:
+{{
+  "hook": "hook text (in {lang_name})",
+  "body": ["slide 1 narration (in {lang_name}, 400~500 chars)", "slide 2", ...],
+  "caption": "caption text (in {lang_name})",
+  "hashtags": ["hashtag1", "hashtag2"],
+  "cta": "call to action text (in {lang_name})"
+}}"""
+        else:
+            json_schema = f"""Respond in JSON:
+{{
+  "hook": "hook text (in {lang_name})",
+  "body": ["part 1 (slide/tweet/paragraph, in {lang_name})", "part 2", ...],
+  "image_prompts": [
+    "detailed AI image generation prompt for slide 1",
+    "detailed AI image generation prompt for slide 2",
+    ...
+  ],
+  "caption": "caption text (in {lang_name})",
+  "hashtags": ["hashtag1", "hashtag2"],
+  "cta": "call to action text (in {lang_name})"
+}}
+
+image_prompts rules — write as a rich Imagen AI image generation prompt (NOT a UI design description):
+- Same count as body array (1:1 match)
+- Always write image_prompts in ENGLISH regardless of content language (Imagen works best with English prompts)
+- 40-80 words per prompt — be specific and descriptive
+- Structure: [main subject + specific details from slide] + [visual style] + [camera angle/composition] + [lighting/atmosphere]
+- Pull concrete details from the slide: exact names, years, numbers, locations, objects mentioned
+- Choose the most visually powerful representation for the slide's key idea
+- Styles to use: cinematic photography, dramatic portrait, aerial photography, macro close-up, split-screen comparison, documentary style, infographic visualization
+- Bad example: "ring chart 93%, dark background"
+- Good example: "Macro close-up of 14th century Korean metal movable type characters arranged in a wooden printing frame, dramatic side lighting revealing bronze texture, dark workshop atmosphere, shallow depth of field, photorealistic 8K"
+- Good example: "Split-screen: left side shows Korean scholar in Joseon-era hanbok reading ancient manuscript by candlelight, right side shows modern Korean woman in cafe using smartphone, warm vs cool lighting contrast, cinematic photography"
+"""
+
+        prompt = f"""Topic: "{topic}"
+Market: {self.profile.display_name}
+Language: {lang_name}
+Tone: {self.profile.tone}
+Info density: {self.profile.info_density}
+Disclaimer: {self.profile.content_rules.disclaimer_finance}
+AI disclosure: {self.profile.content_rules.ai_disclosure}
+
+Winning content structure from research:
 {research.winning_formula.content_structure}
-{series_prompt}
+{series_prompt}{fact_correction_prompt}
 
-포맷 지침:
+Format guide:
 {format_guide}
 
-규칙:
-- 반드시 {self.profile.language}로 작성
-- 톤: {self.profile.tone}
-- 구체적 숫자 사용 (47.3% O, 약 50% X)
-- 재테크 관련이면 면책 조항 포함
-- AI 표기 포함
+Rules:
+- WRITE ENTIRELY IN {lang_name.upper()} — every word, every sentence
+- Tone: {self.profile.tone}
+- Use specific numbers (47.3% YES, "about 50%" NO)
+- Include disclaimer if finance-related
+- Include AI disclosure
 
-JSON 형식으로 응답:
-{{
-  "hook": "실제 사용할 훅 텍스트",
-  "body": ["본문 파트1 (슬라이드/트윗/단락)", "파트2", ...],
-  "caption": "캡션 (Instagram/YouTube 등)",
-  "hashtags": ["해시태그1", "해시태그2"],
-  "cta": "Call to Action 텍스트"
-}}"""
+{json_schema}
+"""
 
-        result = await self.llm.generate_json(prompt)
+        # YouTube 롱폼: 25슬라이드 × 400자 한국어 ≈ 8,000토큰 (image_prompts 제외로 절약)
+        max_tokens = 16000 if platform == "youtube" else 4096
+        result = await self.llm.generate_json(prompt, max_tokens=max_tokens)
         if result:
+            body = result.get("body", [])
+            image_prompts = result.get("image_prompts", [])
+            # YouTube: image_prompts는 ImagePrompterAgent가 별도 생성 — 슬라이드 텍스트로 대체
+            if platform == "youtube":
+                image_prompts = [f"Cinematic scene for: {s[:60]}" for s in body]
+            else:
+                while len(image_prompts) < len(body):
+                    image_prompts.append(f"슬라이드 {len(image_prompts)+1}: 텍스트 강조 타이포그래피")
             return PlatformContent(
                 platform=platform,
                 hook=result.get("hook", hook),
-                body=result.get("body", []),
+                body=body,
+                image_prompts=image_prompts[:len(body)],
                 caption=result.get("caption", ""),
                 hashtags=result.get("hashtags", []),
                 cta=result.get("cta", ""),
@@ -160,6 +237,7 @@ JSON 형식으로 응답:
         hook_result: HookResult,
         target_platforms: list[str],
         series_context: str | None = None,
+        fact_corrections: list[dict] | None = None,
     ) -> ContentPlan:
         """전체 콘텐츠 생성 파이프라인"""
         logger.info(f"=== Copywriter Agent: '{research.topic}' 콘텐츠 생성 ===")
@@ -185,6 +263,7 @@ JSON 형식으로 응답:
                 hook=platform_hook,
                 research=research,
                 series_context=series_context,
+                fact_corrections=fact_corrections,
             )
             if content:
                 platform_contents.append(content)

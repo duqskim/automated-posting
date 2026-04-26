@@ -66,9 +66,10 @@ class ClaudeClient(BaseLLMClient):
         prompt: str,
         system: str | None = None,
         temperature: float = 0.3,
+        max_tokens: int = 4096,
     ) -> dict | None:
         json_prompt = f"{prompt}\n\nRespond ONLY with valid JSON. No markdown, no code blocks, no explanation."
-        response = await self.generate(json_prompt, system, temperature)
+        response = await self.generate(json_prompt, system, temperature, max_tokens=max_tokens)
         if not response:
             return None
 

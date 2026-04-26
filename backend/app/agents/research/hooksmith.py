@@ -49,46 +49,49 @@ class HooksmithAgent:
         content_gaps = "\n".join([f"- {g}" for g in research.winning_formula.content_gaps])
         platforms = ", ".join(self.profile.active_platforms)
 
-        prompt = f"""주제: "{research.topic}"
-시장: {self.profile.display_name}
-언어: {self.profile.language}
-톤: {self.profile.tone}
-훅 스타일: {self.profile.hook_style}
-타겟 플랫폼: {platforms}
+        LANG_NAMES = {"ko": "Korean", "en": "English", "ja": "Japanese"}
+        lang_name = LANG_NAMES.get(self.profile.language, self.profile.language)
 
-이 시장에서 잘 작동하는 훅 패턴:
+        prompt = f"""Topic: "{research.topic}"
+Market: {self.profile.display_name}
+Language: {lang_name}
+Tone: {self.profile.tone}
+Hook style: {self.profile.hook_style}
+Target platforms: {platforms}
+
+Hook patterns that work in this market:
 {hook_examples}
 
-리서치에서 발견한 성공 패턴:
+Winning patterns from research:
 {winning_patterns}
 
-경쟁자가 놓친 빈틈:
+Gaps competitors are missing:
 {content_gaps}
 
-위를 바탕으로 훅 5개와 썸네일 카피 3개를 만들어주세요.
+Create 5 hooks and 3 thumbnail copies based on the above.
 
-규칙:
-- 훅은 {self.profile.get_text_limit()} 이내
-- 각 훅은 다른 스타일 (data, result, contrarian, curiosity, urgency 중)
-- 썸네일 카피는 {self.profile.thumbnail.style} 스타일
-- 반드시 {self.profile.language}로 작성
-- 구체적 숫자 사용 (47.3% O, 약 50% X)
-- 경쟁자 빈틈을 활용한 훅 최소 1개 포함
+Rules:
+- Hooks must be within {self.profile.get_text_limit()}
+- Each hook uses a different style (data, result, contrarian, curiosity, urgency)
+- Thumbnail copy in {self.profile.thumbnail.style} style
+- WRITE ENTIRELY IN {lang_name.upper()} — every word
+- Use specific numbers (47.3% YES, "about 50%" NO)
+- At least 1 hook must exploit a competitor gap
 
-JSON 형식:
+JSON format:
 {{
   "hooks": [
     {{
-      "text": "훅 텍스트",
+      "text": "hook text",
       "style": "data|result|contrarian|curiosity|urgency",
       "platform_fit": ["instagram", "youtube"]
     }}
   ],
   "thumbnail_copies": [
     {{
-      "main_text": "메인 텍스트",
-      "sub_text": "서브 텍스트 (선택)",
-      "style_note": "스타일 노트"
+      "main_text": "main text",
+      "sub_text": "sub text (optional)",
+      "style_note": "style note"
     }}
   ],
   "recommended_hook_index": 0

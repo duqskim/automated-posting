@@ -9,7 +9,7 @@ from typing import Literal
 import yaml
 from pydantic import BaseModel
 
-MarketCode = Literal["kr", "us", "jp"]
+MarketCode = Literal["kr", "us", "jp", "global"]
 
 PROFILES_DIR = Path(__file__).parent / "market_profiles"
 
@@ -120,7 +120,7 @@ class MarketProfile(BaseModel):
         return "no limit"
 
 
-@lru_cache(maxsize=3)
+@lru_cache(maxsize=4)
 def load_market_profile(market: MarketCode) -> MarketProfile:
     """시장 프로필 로드 (캐시됨)"""
     profile_path = PROFILES_DIR / f"{market}.yaml"

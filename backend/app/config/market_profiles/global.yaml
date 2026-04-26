@@ -1,0 +1,137 @@
+market: global
+language: en
+display_name: "Global (English)"
+
+# Content tone & style — educational storytelling for international audiences
+tone: "Engaging, story-first, educational. Authoritative but approachable. Explains cultural context that non-Koreans may not know. Avoids jargon."
+hook_style: "curiosity"
+hook_examples:
+  - "Most people have no idea {surprising_fact} — here's the real story."
+  - "The K-drama got this completely wrong. Here's what actually happened."
+  - "{topic} shaped all of East Asia. Nobody outside Korea talks about it."
+  - "This {era} Korean {person/invention/event} changed history — and nobody outside Korea knows why."
+  - "Why did {historical_figure} do this? The real answer is more shocking than the drama."
+info_density: medium
+slide_text_limit_words: 15
+caption_style: "storytelling"
+
+# Platforms — YouTube-first for long-form history
+platforms:
+  primary:
+    - youtube
+    - youtube_shorts
+  secondary:
+    - instagram
+    - tiktok
+    - threads
+  optional:
+    - x
+    - newsletter
+    - linkedin
+
+# Research sources — English-language + Korean primary sources
+research_sources:
+  - type: google_trends
+    region: US
+    language: en
+  - type: youtube_search
+    region: global
+    language: en
+    keywords:
+      - "Korean history"
+      - "Korea documentary"
+      - "K-drama facts"
+      - "Korean culture explained"
+  - type: reddit_trending
+    subreddits:
+      - r/korea
+      - r/korean
+      - r/kdrama
+      - r/history
+      - r/AsianHistory
+  - type: rss_feeds
+    feeds:
+      - name: Korea JoongAng Daily
+        url: "https://koreajoongangdaily.joins.com/rss/feeds.htm"
+      - name: The Korea Herald
+        url: "https://www.koreaherald.com/rss/010000000000.xml"
+      - name: Korea.net
+        url: "https://www.korea.net/rss/news.do"
+
+# SEO
+seo_engine: google
+sharing_optimization: social_share
+
+# Hashtags
+hashtag:
+  count: 5
+  language: english
+  mix: "topic-specific + discovery: #KoreanHistory #Korea #KDrama #KoreanCulture + episode-specific"
+  note: "Mix broad discovery tags with specific episode tags. Always include #KoreanHistory."
+
+# Content rules
+content_rules:
+  disclaimer_finance: ""  # 역사 콘텐츠 — 재무 면책 불필요
+  ai_disclosure: "Created with AI assistance | Historical facts verified"
+  trend_window_hours: 720  # 역사 콘텐츠 — 트렌드 의존도 낮음, 상시 유효
+
+# Thumbnail style — YouTube history channel aesthetic
+thumbnail:
+  style: "dramatic_historical"
+  text_ratio: 0.30
+  preferred_colors: ["#8B0000", "#FFD700", "#1A1A2E", "#FFFFFF"]
+  note: "Dark cinematic background + bold title text + historical imagery. Kings & Generals / Oversimplified aesthetic."
+
+# Posting hours (EST)
+timezone: America/New_York
+posting_hours:
+  youtube:
+    best: ["15:00", "18:00"]
+    good: ["12:00"]
+  youtube_shorts:
+    best: ["12:00", "18:00"]
+    good: ["09:00"]
+  instagram:
+    best: ["11:00", "19:00"]
+    good: ["14:00"]
+
+# AI detection rules
+ai_detection:
+  banned_patterns:
+    - "In today's rapidly evolving"
+    - "It's important to note that"
+    - "In conclusion"
+    - "Let's dive in"
+    - "delve into"
+    - "tapestry"
+    - "multifaceted"
+    - "It is worth noting"
+    - "Throughout history"
+    - "Since the dawn of"
+  style_rules:
+    - "Start with a specific scene, person, or moment — not a general statement"
+    - "Use present tense for dramatic retelling ('The king walks in...')"
+    - "Include specific dates, numbers, names — never vague ('around that time')"
+    - "Connect ancient events to things audiences know today"
+    - "One surprising fact per slide/section minimum"
+    - "Acknowledge K-drama connections where relevant"
+  require_specific_numbers: true
+
+# Fact-checking — strict mode for history
+fact_check:
+  default_mode: strict
+  warn_on_uncertain: true
+  required_checks:
+    - dates
+    - names
+    - events
+    - statistics
+    - dynasty_periods
+  sources_note: "Cross-check against: 국사편찬위원회, 한국학중앙연구원, Korea.net official history"
+
+# KPI priorities
+kpi_priority:
+  youtube: [watch_time, avg_view_duration, ctr, subscriber_conversion, comments]
+  youtube_shorts: [views, shares, profile_visits]
+  instagram: [saves, shares, reach]
+  tiktok: [completion_rate, shares, follows]

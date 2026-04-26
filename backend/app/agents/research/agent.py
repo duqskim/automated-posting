@@ -47,17 +47,21 @@ class ResearcherAgent:
 
     async def expand_keywords(self, topic: str) -> list[str]:
         """주제 → 관련 키워드 15~20개 확장"""
-        prompt = f"""주제: "{topic}"
-시장: {self.profile.display_name} ({self.profile.language})
-타겟 플랫폼: {', '.join(self.profile.active_platforms)}
+        LANG_NAMES = {"ko": "Korean", "en": "English", "ja": "Japanese"}
+        lang_name = LANG_NAMES.get(self.profile.language, self.profile.language)
 
-이 주제와 관련된 검색 키워드를 15~20개 생성해주세요.
-- 사람들이 실제로 검색할 법한 키워드
-- 롱테일 키워드 포함
-- {self.profile.language} 언어로
+        prompt = f"""Topic: "{topic}"
+Market: {self.profile.display_name}
+Language: {lang_name}
+Target platforms: {', '.join(self.profile.active_platforms)}
 
-JSON 형식으로 응답:
-{{"keywords": ["키워드1", "키워드2", ...]}}"""
+Generate 15-20 search keywords related to this topic.
+- Keywords people actually search for
+- Include long-tail keywords
+- WRITE ALL KEYWORDS IN {lang_name.upper()}
+
+Respond in JSON:
+{{"keywords": ["keyword1", "keyword2", ...]}}"""
 
         result = await self.llm.generate_json(prompt)
         if result and "keywords" in result:
@@ -70,28 +74,31 @@ JSON 형식으로 응답:
         platforms = self.profile.active_platforms
         platform_list = ", ".join(platforms)
 
-        prompt = f"""주제: "{topic}"
-관련 키워드: {', '.join(keywords[:10])}
-분석 대상 플랫폼: {platform_list}
-시장: {self.profile.display_name}
+        LANG_NAMES = {"ko": "Korean", "en": "English", "ja": "Japanese"}
+        lang_name = LANG_NAMES.get(self.profile.language, self.profile.language)
 
-각 플랫폼에서 이 주제로 가장 성공한 콘텐츠 패턴을 분석해주세요.
-실제 존재할 법한 상위 콘텐츠의 특징을 분석하세요:
+        prompt = f"""Topic: "{topic}"
+Related keywords: {', '.join(keywords[:10])}
+Platforms: {platform_list}
+Market: {self.profile.display_name}
 
-JSON 형식으로 응답:
+Analyze the most successful content patterns for this topic on each platform.
+Describe characteristics of top-performing content (real or realistic examples):
+
+Respond in JSON:
 {{
   "top_content": [
     {{
-      "platform": "플랫폼명",
-      "title": "성공한 콘텐츠 제목/훅 예시",
-      "hook_used": "사용된 훅 패턴 설명",
-      "format_notes": "포맷 특징 (길이, 구조, 비주얼)",
-      "engagement": {{"estimated_views": "예상 조회수 범위", "key_metric": "핵심 성과 지표"}}
+      "platform": "platform name",
+      "title": "successful content title/hook example (in {lang_name})",
+      "hook_used": "hook pattern used",
+      "format_notes": "format characteristics (length, structure, visuals)",
+      "engagement": {{"estimated_views": "estimated view range", "key_metric": "key success metric"}}
     }}
   ]
 }}
 
-각 플랫폼당 2~3개, 총 {len(platforms) * 2}~{len(platforms) * 3}개를 분석해주세요."""
+2-3 per platform, total {len(platforms) * 2}~{len(platforms) * 3} items. All text in {lang_name.upper()}."""
 
         result = await self.llm.generate_json(prompt)
         if result and "top_content" in result:
@@ -117,23 +124,26 @@ JSON 형식으로 응답:
             for c in top_content
         ])
 
-        prompt = f"""주제: "{topic}"
-시장: {self.profile.display_name}
-훅 스타일 기본값: {self.profile.hook_style}
+        LANG_NAMES = {"ko": "Korean", "en": "English", "ja": "Japanese"}
+        lang_name = LANG_NAMES.get(self.profile.language, self.profile.language)
 
-아래는 이 주제로 성공한 상위 콘텐츠 분석 결과입니다:
+        prompt = f"""Topic: "{topic}"
+Market: {self.profile.display_name}
+Default hook style: {self.profile.hook_style}
+
+Top content analysis for this topic:
 {content_summary}
 
-이 데이터를 바탕으로 winning formula를 추출해주세요:
+Extract the winning formula from this data:
 
-JSON 형식으로 응답:
+Respond in JSON (all text values in {lang_name.upper()}):
 {{
-  "hook_patterns": ["성공한 훅 패턴 1", "패턴 2", "패턴 3"],
-  "content_structure": "성공한 콘텐츠의 공통 구조 설명",
-  "avg_length": "최적 길이/슬라이드 수/트윗 수",
-  "hashtag_strategy": "성공한 해시태그 전략",
-  "thumbnail_style": "성공한 썸네일 스타일 설명",
-  "content_gaps": ["경쟁자가 놓친 각도 1", "빈틈 2", "빈틈 3"]
+  "hook_patterns": ["winning hook pattern 1", "pattern 2", "pattern 3"],
+  "content_structure": "common structure of successful content",
+  "avg_length": "optimal length/slide count/tweet count",
+  "hashtag_strategy": "winning hashtag strategy",
+  "thumbnail_style": "winning thumbnail style",
+  "content_gaps": ["angle competitors are missing 1", "gap 2", "gap 3"]
 }}"""
 
         result = await self.llm.generate_json(prompt)

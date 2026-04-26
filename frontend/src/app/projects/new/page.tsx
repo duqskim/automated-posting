@@ -38,11 +38,8 @@ export default function NewProjectPage() {
   }, []);
 
   useEffect(() => {
-    const m = markets.find((m) => m.code === market);
-    if (m) {
-      setSelectedPlatforms([...m.primary_platforms, ...m.secondary_platforms]);
-    }
-  }, [market, markets]);
+    setSelectedPlatforms([]);
+  }, [market]);
 
   const currentMarket = markets.find((m) => m.code === market);
   const allPlatforms = currentMarket
