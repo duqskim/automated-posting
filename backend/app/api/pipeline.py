@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 
 from app.models.base import get_db
-from app.models.project import Project
+from app.models.project import Project, SeriesCharacter
 from app.models.content import GeneratedContent
 from app.models.user import User
 from app.dependencies import get_current_user
@@ -262,6 +262,11 @@ async def run_stage_write(
     controller = PipelineController(project.market)
     platforms = project.target_platforms or controller.profile.active_platforms
 
+    # 시리즈 캐릭터 로드 (있으면 목소리/비주얼에 반영)
+    character = await _load_series_character(project, db)
+    if character:
+        logger.info(f"[write] 캐릭터 적용: {character['name']}")
+
     try:
         result = await controller.run_write(
             research_dict=sr["research"],
@@ -269,6 +274,7 @@ async def run_stage_write(
             selected_hook_index=sr.get("selected_hook_index", 0),
             target_platforms=list(platforms) if isinstance(platforms, (list, dict)) else platforms,
             fact_corrections=fact_corrections,
+            character=character,
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"글쓰기 실패: {e}")
@@ -349,11 +355,15 @@ async def run_stage_render(
 
     controller = PipelineController(project.market)
 
+    # 시리즈 캐릭터 로드 (이미지에 캐릭터 등장)
+    character = await _load_series_character(project, db)
+
     try:
         render_result = await controller.run_render(
             content_dict=sr["content"],
             topic=project.topic,
             platform=body.platform,
+            character=character,
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"이미지 생성 실패: {e}")
@@ -677,3 +687,28 @@ async def _get_user_project(project_id: int, user_id: int, db: AsyncSession) -> 
     if not project:
         raise HTTPException(status_code=404, detail="프로젝트를 찾을 수 없습니다")
     return project
+
+
+async def _load_series_character(project: Project, db: AsyncSession) -> dict | None:
+    """프로젝트의 시리즈에서 active 캐릭터 1개 로드 → dict 반환"""
+    if not project.series_id:
+        return None
+    result = await db.execute(
+        select(SeriesCharacter).where(
+            SeriesCharacter.series_id == project.series_id,
+            SeriesCharacter.status == "active",
+        ).limit(1)
+    )
+    char = result.scalar_one_or_none()
+    if not char:
+        return None
+    return {
+        "id": char.id,
+        "name": char.name,
+        "concept": char.concept,
+        "personality": char.personality,
+        "visual_description": char.visual_description,
+        "base_image_prompt": char.base_image_prompt,
+        "reference_image_url": char.reference_image_url,
+        "bible": char.bible,
+    }

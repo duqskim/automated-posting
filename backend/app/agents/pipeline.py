@@ -257,6 +257,7 @@ class PipelineController:
         selected_hook_index: int,
         target_platforms: list[str],
         fact_corrections: list[dict] | None = None,
+        character: dict | None = None,
     ) -> dict:
         """Stage 3+4: 글쓰기 + 품질 검수 → dict 반환"""
         logger.info(f"[Stage 3] 글쓰기 시작 (훅 #{selected_hook_index})")
@@ -269,12 +270,15 @@ class PipelineController:
 
         if fact_corrections:
             logger.info(f"  [팩트 수정 재작성] 오류 {len(fact_corrections)}개 반영")
+        if character:
+            logger.info(f"  [캐릭터 적용] {character.get('name', '?')}")
 
         content = await self.copywriter.write(
             research=research,
             hook_result=hooks,
             target_platforms=target_platforms,
             fact_corrections=fact_corrections,
+            character=character,
         )
         quality = self.quality_gate.evaluate(content)
 
@@ -285,6 +289,7 @@ class PipelineController:
                 hook_result=hooks,
                 target_platforms=target_platforms,
                 fact_corrections=fact_corrections,
+                character=character,
             )
             quality = self.quality_gate.evaluate(content)
 
@@ -335,6 +340,7 @@ class PipelineController:
         content_dict: dict,
         topic: str,
         platform: str = "youtube",
+        character: dict | None = None,
     ) -> dict:
         """Stage 4: 플랫폼 타입별 이미지/씬 생성
         - carousel (instagram/linkedin): CreativeDirector → ArtDirector → DesignReviewer
@@ -346,11 +352,11 @@ class PipelineController:
         if platform in self.CAROUSEL_PLATFORMS:
             return await self._run_render_carousel(content_dict, topic, platform)
         if platform in self.SHORT_VIDEO_PLATFORMS:
-            return await self._run_render_short_video(content_dict, topic, platform)
+            return await self._run_render_short_video(content_dict, topic, platform, character=character)
         if platform in self.TEXT_IMAGE_PLATFORMS:
-            return await self._run_render_text_image(content_dict, topic, platform)
+            return await self._run_render_text_image(content_dict, topic, platform, character=character)
         # 기본: youtube 롱폼
-        return await self._run_render_scene(content_dict, topic, platform)
+        return await self._run_render_scene(content_dict, topic, platform, character=character)
 
     async def _run_render_carousel(self, content_dict: dict, topic: str, platform: str) -> dict:
         """캐러셀 플랫폼: ArtDirector (Playwright) → 슬라이드 PNG"""
@@ -416,7 +422,7 @@ class PipelineController:
             "thumbnail_path": thumbnail_path,
         }
 
-    async def _run_render_scene(self, content_dict: dict, topic: str, platform: str) -> dict:
+    async def _run_render_scene(self, content_dict: dict, topic: str, platform: str, character: dict | None = None) -> dict:
         """영상 플랫폼: VideoPlannerAgent → VideoDirectorAgent → ImagePrompter → Imagen 4"""
         from app.agents.media.image_generation import generate_all_scenes, SCENES_DIR
         from app.agents.media.image_prompter import generate_image_prompts
@@ -463,6 +469,7 @@ class PipelineController:
             rough_prompts=target.image_prompts or [],
             language=self.profile.language,
             platform=platform,
+            character=character,
         )
 
         # Step 3: Video Director — 영화적 연출 강화
@@ -561,7 +568,7 @@ class PipelineController:
             "video_plan": video_plan_dict,
         }
 
-    async def _run_render_short_video(self, content_dict: dict, topic: str, platform: str) -> dict:
+    async def _run_render_short_video(self, content_dict: dict, topic: str, platform: str, character: dict | None = None) -> dict:
         """숏폼 영상 플랫폼 (youtube_shorts/instagram_reels/tiktok): 9:16 씬 이미지
         - 롱폼과 차이: 짧은 목표 시간(45초), 빠른 페이싱, 썸네일·챕터 없음
         """
@@ -602,6 +609,7 @@ class PipelineController:
             rough_prompts=target.image_prompts or [],
             language=self.profile.language,
             platform=platform,  # 9:16 aspect 자동 적용
+            character=character,
         )
 
         # Step 3: Video Director — 에너제틱 스타일
@@ -658,7 +666,7 @@ class PipelineController:
             "video_plan": video_plan_dict,
         }
 
-    async def _run_render_text_image(self, content_dict: dict, topic: str, platform: str) -> dict:
+    async def _run_render_text_image(self, content_dict: dict, topic: str, platform: str, character: dict | None = None) -> dict:
         """텍스트+이미지 플랫폼 (x/threads): 단일 헤더 이미지 1장 생성"""
         from app.agents.media.image_generation import generate_scene_image, SCENES_DIR
         from app.agents.media.image_prompter import generate_image_prompts
@@ -682,6 +690,7 @@ class PipelineController:
                 rough_prompts=[],
                 language=self.profile.language,
                 platform="x",  # 16:9 기본
+                character=character,
             )
             img_prompt = prompts[0] if prompts else f"Cinematic scene about {topic}. Photorealistic, 8K"
         except Exception:

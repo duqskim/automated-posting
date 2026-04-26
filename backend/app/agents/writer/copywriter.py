@@ -48,6 +48,7 @@ class CopywriterAgent:
         research: ResearchResult,
         series_context: str | None = None,
         fact_corrections: list[dict] | None = None,
+        character: dict | None = None,
     ) -> PlatformContent | None:
         """단일 플랫폼용 콘텐츠 생성 (독립 LLM 호출)"""
 
@@ -145,6 +146,27 @@ class CopywriterAgent:
                     f"\n\n[FACT CORRECTIONS — 이전 팩트체크에서 발견된 오류. 반드시 수정해서 작성할 것]\n{lines}"
                 )
 
+        character_prompt = ""
+        if character:
+            char_name = character.get("name", "")
+            char_personality = character.get("personality", "")
+            char_tagline = character.get("concept", "")
+            bible = character.get("bible") or {}
+            char_voice = bible.get("voice_description") or character.get("voice_description", "")
+            char_speaking = bible.get("speaking_style") or ""
+            character_prompt = f"""
+[CHARACTER NARRATOR — 반드시 이 캐릭터가 말하는 것처럼 작성할 것]
+이름: {char_name}
+컨셉: {char_tagline}
+성격: {char_personality}
+목소리: {char_voice}
+말투: {char_speaking}
+
+모든 내용을 {char_name}이(가) 시청자에게 직접 설명하는 형식으로 작성하세요.
+{char_name}의 개성과 말투가 텍스트 전체에서 일관되게 드러나야 합니다.
+첫 슬라이드에서 {char_name}이(가) 자기소개를 하고 주제를 제시하세요.
+"""
+
         # YouTube는 image_prompts 제외 (토큰 절약 → body 텍스트 길이 확보, ImagePrompterAgent가 별도 생성)
         if platform == "youtube":
             json_schema = f"""Respond in JSON:
@@ -193,8 +215,7 @@ AI disclosure: {self.profile.content_rules.ai_disclosure}
 
 Winning content structure from research:
 {research.winning_formula.content_structure}
-{series_prompt}{fact_correction_prompt}
-
+{series_prompt}{fact_correction_prompt}{character_prompt}
 Format guide:
 {format_guide}
 
@@ -238,6 +259,7 @@ Rules:
         target_platforms: list[str],
         series_context: str | None = None,
         fact_corrections: list[dict] | None = None,
+        character: dict | None = None,
     ) -> ContentPlan:
         """전체 콘텐츠 생성 파이프라인"""
         logger.info(f"=== Copywriter Agent: '{research.topic}' 콘텐츠 생성 ===")
@@ -264,6 +286,7 @@ Rules:
                 research=research,
                 series_context=series_context,
                 fact_corrections=fact_corrections,
+                character=character,
             )
             if content:
                 platform_contents.append(content)

@@ -29,6 +29,7 @@ async def generate_image_prompts(
     rough_prompts: list[str] | None = None,
     language: str = "en",
     platform: str = "youtube",
+    character: dict | None = None,
 ) -> list[str]:
     """
     슬라이드 본문 → Imagen 4 최적화 프롬프트 목록
@@ -66,12 +67,31 @@ async def generate_image_prompts(
         for i, slide in enumerate(body_slides)
     )
 
+    character_note = ""
+    if character:
+        char_name = character.get("name", "")
+        char_visual = character.get("visual_description", "")
+        char_base_prompt = character.get("base_image_prompt", "")
+        char_ref = character.get("reference_image_url", "")
+        bible = character.get("bible") or {}
+        char_appearance = bible.get("visual_description") or char_visual
+        if char_base_prompt or char_appearance:
+            character_note = f"""
+CHARACTER TO FEATURE: {char_name}
+Visual appearance: {char_appearance}
+Base image style: {char_base_prompt}
+
+For EACH slide, show {char_name} as the narrator/presenter in the scene.
+The character should appear consistently across all slides.
+Integrate the character naturally into each scene (e.g., pointing at data, standing in front of relevant background, gesturing while explaining).
+"""
+
     prompt = f"""You are a professional visual director specializing in AI image generation (Imagen 4).
 
 Content topic: "{topic}"
 Hook: "{hook}"
 Platform aspect ratio: {aspect_note}
-
+{character_note}
 Slides to visualize:
 {slides_text}
 
