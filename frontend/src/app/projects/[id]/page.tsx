@@ -36,6 +36,8 @@ interface PlatformContent {
 
 interface VideoResult {
   platform: string;
+  status?: string;  // "processing" | undefined
+  task_id?: string;
   full_video_url: string | null;
   shorts_video_url: string | null;
   duration: number | null;
@@ -93,7 +95,7 @@ const HOOK_STYLE_LABELS: Record<string, string> = {
   urgency: "⚡ 긴박감",
 };
 
-const STEP_ORDER = ["idle", "research_done", "hooks_done", "write_done", "render_done", "video_done"];
+const STEP_ORDER = ["idle", "research_done", "hooks_done", "write_done", "render_done", "video_processing", "video_done"];
 
 function stepIndex(step: string) {
   return STEP_ORDER.indexOf(step);
@@ -120,10 +122,12 @@ export default function ProjectDetailPage() {
     video: null,
   });
   const [videoPlatform, setVideoPlatform] = useState("youtube");
+  const [imageProvider, setImageProvider] = useState<"auto" | "imagen" | "gemini-flash" | "gemini-pro" | "gpt-image-1" | "dalle">("gemini-pro");
   const [ttsPlatform, setTtsPlatform] = useState<"none" | "gemini" | "elevenlabs">("gemini");
   const [bgmCategory, setBgmCategory] = useState<"none" | "cinematic" | "ambient" | "upbeat" | "dramatic">("cinematic");
   const [loading, setLoading] = useState<string | null>(null); // 로딩 중인 스텝 이름
   const [error, setError] = useState("");
+  const [videoLog, setVideoLog] = useState<{ lines: string[]; step: string } | null>(null);
 
   // 편집 상태
   const [editingPlatform, setEditingPlatform] = useState<string | null>(null);
@@ -149,9 +153,36 @@ export default function ProjectDetailPage() {
 
     loadProject();
     api.pipeline.getStage(projectId)
-      .then((data: StageState) => setStage(data))
+      .then((data: StageState) => {
+        if (data.image_urls?.length) {
+          const ts = Date.now();
+          data.image_urls = data.image_urls.map((u: string) => u.includes("?t=") ? u : `${u}?t=${ts}`);
+        }
+        setStage(data);
+      })
       .catch(() => {});
   }, [loadProject, router, projectId]);
+
+  // 영상 백그라운드 처리 중 자동 폴링 (10초 간격) + 로그 갱신
+  useEffect(() => {
+    if (stage.current_step !== "video_processing") return;
+    const poll = async () => {
+      try {
+        const [stageData, logData] = await Promise.all([
+          api.pipeline.getStage(projectId),
+          api.pipeline.getLog(projectId),
+        ]);
+        setStage(stageData);
+        setVideoLog(logData);
+        if (stageData.current_step === "video_done" || (stageData.video && !stageData.video.status)) {
+          await loadProject();
+        }
+      } catch { /* 무시 */ }
+    };
+    poll(); // 즉시 1회
+    const interval = setInterval(poll, 10_000);
+    return () => clearInterval(interval);
+  }, [stage.current_step, projectId, loadProject]);
 
   /* ─── 단계 실행 ─────────────────────────────────────────── */
 
@@ -262,11 +293,11 @@ export default function ProjectDetailPage() {
     setLoading("render");
     setError("");
     try {
-      const res = await api.pipeline.runRender(projectId, platform);
+      const res = await api.pipeline.runRender(projectId, platform, imageProvider);
       setStage(prev => ({
         ...prev,
         current_step: "render_done",
-        image_urls: res.image_urls,
+        image_urls: (res.image_urls as string[]).map((u: string) => `${u}?t=${Date.now()}`),
         thumbnail_url: res.thumbnail_url ?? prev.thumbnail_url,
       }));
       await loadProject();
@@ -301,12 +332,22 @@ export default function ProjectDetailPage() {
     setError("");
     try {
       const res = await api.pipeline.runVideo(projectId, videoPlatform, ttsPlatform, bgmCategory);
-      setStage(prev => ({
-        ...prev,
-        current_step: "video_done",
-        video: res,
-      }));
-      await loadProject();
+      if (res.step === "video_processing") {
+        // Celery 모드: 백그라운드 처리 시작 — 폴링으로 완료 감지
+        setStage(prev => ({
+          ...prev,
+          current_step: "video_processing",
+          video: { platform: videoPlatform, status: "processing", full_video_url: null, shorts_video_url: null, duration: null, clips_count: 0 },
+        }));
+      } else {
+        // 동기 폴백 (Redis 없을 때)
+        setStage(prev => ({
+          ...prev,
+          current_step: "video_done",
+          video: res,
+        }));
+        await loadProject();
+      }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "영상 제작 실패");
     } finally {
@@ -836,9 +877,23 @@ export default function ProjectDetailPage() {
                   </Button>
                 </div>
               ) : (
-                <Button onClick={() => runRender(videoPlatform)} disabled={!!loading}>
-                  {loading === "render" ? "이미지 생성 중... (슬라이드당 5~10초)" : "🖼️ 씬 이미지 생성"}
-                </Button>
+                <div className="space-y-2">
+                  <div className="flex gap-2 text-xs">
+                    <span className="text-muted-foreground self-center">이미지 엔진:</span>
+                    {(["gpt-image-1", "gemini-pro", "gemini-flash", "imagen", "dalle"] as const).map(p => (
+                      <button
+                        key={p}
+                        onClick={() => setImageProvider(p)}
+                        className={`px-2 py-1 rounded border text-xs ${imageProvider === p ? "bg-primary text-primary-foreground border-primary" : "border-border hover:bg-muted"}`}
+                      >
+                        {p === "gpt-image-1" ? "GPT-image-1 ✨" : p === "gemini-pro" ? "Gemini 2.5 Pro" : p === "gemini-flash" ? "Gemini 2.0 Flash" : p === "imagen" ? "Imagen 4" : "DALL-E 3"}
+                      </button>
+                    ))}
+                  </div>
+                  <Button onClick={() => runRender(videoPlatform)} disabled={!!loading}>
+                    {loading === "render" ? "이미지 생성 중... (슬라이드당 5~10초)" : "🖼️ 씬 이미지 생성"}
+                  </Button>
+                </div>
               );
             })()}
           </StepCard>
@@ -849,10 +904,35 @@ export default function ProjectDetailPage() {
             step={5}
             title="영상 제작"
             icon="🎬"
-            done={currentStepIdx >= 5}
+            done={stage.current_step === "video_done"}
             active={currentStepIdx >= 3}
           >
-            {stage.video && !stage.video.error ? (
+            {stage.video?.status === "processing" ? (
+              <div className="space-y-3">
+                <div className="flex items-center gap-3 p-4 bg-muted/20 rounded-lg border border-blue-500/20">
+                  <div className="text-2xl animate-spin">⏳</div>
+                  <div className="flex-1">
+                    <div className="font-medium text-blue-500">영상 제작 중...</div>
+                    <div className="text-xs text-muted-foreground mt-0.5">
+                      {videoLog?.step ?? "처리 중"} · 10초마다 자동 갱신
+                    </div>
+                  </div>
+                </div>
+                {videoLog && videoLog.lines.length > 0 && (
+                  <div className="rounded-lg border bg-black/80 p-3 max-h-48 overflow-y-auto font-mono">
+                    {videoLog.lines.slice(-15).map((line, i) => {
+                      const color = line.includes("ERROR") || line.includes("error") ? "text-red-400"
+                        : line.includes("완료") || line.includes("성공") ? "text-green-400"
+                        : line.includes("INFO") ? "text-blue-300"
+                        : "text-gray-300";
+                      // 타임스탬프 + 모듈명 제거하고 메시지만 표시
+                      const msg = line.replace(/^.*\| (INFO|WARNING|ERROR)\s+\|[^|]+\|\s*/, "").trim();
+                      return <div key={i} className={`text-[10px] leading-5 ${color}`}>{msg || line}</div>;
+                    })}
+                  </div>
+                )}
+              </div>
+            ) : stage.video && !stage.video.error ? (
               <div className="space-y-4">
                 <div className="flex items-center gap-3 p-3 bg-muted/30 rounded-lg">
                   <span className="text-2xl">🎬</span>
@@ -871,6 +951,7 @@ export default function ProjectDetailPage() {
                       <video
                         src={`${API_BASE}${stage.video.full_video_url}`}
                         controls
+                        preload="metadata"
                         className="w-full rounded-lg max-h-64"
                       />
                       <a
@@ -888,6 +969,7 @@ export default function ProjectDetailPage() {
                       <video
                         src={`${API_BASE}${stage.video.shorts_video_url}`}
                         controls
+                        preload="metadata"
                         className="w-full rounded-lg max-h-64"
                       />
                       <a

@@ -15,7 +15,15 @@ Pipeline Controller — 전체 파이프라인 오케스트레이션 (코드 기
   run_render()    → stage_results["images"] 저장
 """
 import re
+import unicodedata
 from pathlib import Path
+
+
+def _make_slug(text: str, max_length: int = 25) -> str:
+    """텍스트 → URL/파일명 안전 슬러그 (NFKD 정규화 → ASCII 변환)"""
+    ascii_text = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode()
+    base = ascii_text if ascii_text.strip() else text
+    return re.sub(r"[^\w]", "_", base)[:max_length].strip("_") or "slug"
 from dataclasses import dataclass, field
 from loguru import logger
 
@@ -206,7 +214,7 @@ class PipelineController:
     async def _render_images(self, design_plan: DesignPlan, project_slug: str) -> list[str]:
         """디자인 플랜 → 실제 PNG 이미지 렌더링"""
         image_paths = []
-        slug = re.sub(r"[^\w]", "_", project_slug, flags=re.ASCII)[:30]
+        slug = re.sub(r"[^\w]", "_", unicodedata.normalize("NFKD", project_slug).encode("ascii","ignore").decode() or project_slug)[:30]
 
         async with async_playwright() as p:
             browser = await p.chromium.launch()
@@ -341,6 +349,7 @@ class PipelineController:
         topic: str,
         platform: str = "youtube",
         character: dict | None = None,
+        image_provider: str = "auto",
     ) -> dict:
         """Stage 4: 플랫폼 타입별 이미지/씬 생성
         - carousel (instagram/linkedin): CreativeDirector → ArtDirector → DesignReviewer
@@ -352,11 +361,11 @@ class PipelineController:
         if platform in self.CAROUSEL_PLATFORMS:
             return await self._run_render_carousel(content_dict, topic, platform)
         if platform in self.SHORT_VIDEO_PLATFORMS:
-            return await self._run_render_short_video(content_dict, topic, platform, character=character)
+            return await self._run_render_short_video(content_dict, topic, platform, character=character, image_provider=image_provider)
         if platform in self.TEXT_IMAGE_PLATFORMS:
-            return await self._run_render_text_image(content_dict, topic, platform, character=character)
+            return await self._run_render_text_image(content_dict, topic, platform, character=character, image_provider=image_provider)
         # 기본: youtube 롱폼
-        return await self._run_render_scene(content_dict, topic, platform, character=character)
+        return await self._run_render_scene(content_dict, topic, platform, character=character, image_provider=image_provider)
 
     async def _run_render_carousel(self, content_dict: dict, topic: str, platform: str) -> dict:
         """캐러셀 플랫폼: ArtDirector (Playwright) → 슬라이드 PNG"""
@@ -372,7 +381,7 @@ class PipelineController:
             content_plan.platform_contents[0],
         )
 
-        slug = re.sub(r"[^\w]", "_", topic, flags=re.ASCII)[:25]
+        slug = _make_slug(topic)
         art = ArtDirectorAgent(self.profile)
 
         # Step 1: Creative Director → 디자인 전략
@@ -422,7 +431,7 @@ class PipelineController:
             "thumbnail_path": thumbnail_path,
         }
 
-    async def _run_render_scene(self, content_dict: dict, topic: str, platform: str, character: dict | None = None) -> dict:
+    async def _run_render_scene(self, content_dict: dict, topic: str, platform: str, character: dict | None = None, image_provider: str = "auto") -> dict:
         """영상 플랫폼: VideoPlannerAgent → VideoDirectorAgent → ImagePrompter → Imagen 4"""
         from app.agents.media.image_generation import generate_all_scenes, SCENES_DIR
         from app.agents.media.image_prompter import generate_image_prompts
@@ -439,7 +448,7 @@ class PipelineController:
             content_plan.platform_contents[0],
         )
 
-        slug = re.sub(r"[^\w]", "_", topic, flags=re.ASCII)[:25]
+        slug = _make_slug(topic)
 
         # research에서 thumbnail_style 추출 (없으면 빈 문자열)
         thumbnail_style = content_plan.platform_contents[0].metadata.get(
@@ -485,7 +494,7 @@ class PipelineController:
             except Exception as e:
                 logger.warning(f"  [VideoDirectorAgent] 실패 (기본 프롬프트 사용): {e}")
 
-        # Step 4: Imagen 4 씬 이미지 생성
+        # Step 4: 씬 이미지 생성 (Imagen 4 / DALL-E 3)
         image_paths = await generate_all_scenes(
             slide_texts=target.body,
             image_prompts=optimized_prompts,
@@ -493,6 +502,7 @@ class PipelineController:
             platform=platform,
             language=self.profile.language,
             slug=slug,
+            image_provider=image_provider,
         )
         image_paths = [p for p in image_paths if p]
         logger.info(f"  씬 이미지 완료: {len(image_paths)}장")
@@ -559,8 +569,25 @@ class PipelineController:
                 ],
             }
 
+        # Step 7: VideoPrompter — Kling 전용 영상 프롬프트 미리 생성 (렌더 단계에서 캐시)
+        video_prompts_for_kling = None
+        try:
+            from app.agents.media.video_prompter import generate_video_prompts
+            video_prompts_for_kling = await generate_video_prompts(
+                topic=topic,
+                hook=target.hook,
+                body_slides=target.body,
+                video_plan_dict=video_plan_dict,
+                platform=platform,
+            )
+            logger.info(f"  [VideoPrompter] {len(video_prompts_for_kling)}개 Kling 프롬프트 캐시")
+        except Exception as e:
+            logger.warning(f"  [VideoPrompter] 실패 (영상 제작 시 재시도): {e}")
+
         return {
             "image_paths": image_paths,
+            "image_prompts": optimized_prompts,  # Imagen용 (정적 이미지)
+            "video_prompts": video_prompts_for_kling,  # Kling용 (동적 영상)
             "render_type": "scene",
             "thumbnail_path": thumbnail_path,
             "thumbnail_spec": thumbnail_spec_dict,
@@ -568,7 +595,7 @@ class PipelineController:
             "video_plan": video_plan_dict,
         }
 
-    async def _run_render_short_video(self, content_dict: dict, topic: str, platform: str, character: dict | None = None) -> dict:
+    async def _run_render_short_video(self, content_dict: dict, topic: str, platform: str, character: dict | None = None, image_provider: str = "auto") -> dict:
         """숏폼 영상 플랫폼 (youtube_shorts/instagram_reels/tiktok): 9:16 씬 이미지
         - 롱폼과 차이: 짧은 목표 시간(45초), 빠른 페이싱, 썸네일·챕터 없음
         """
@@ -585,7 +612,7 @@ class PipelineController:
             content_plan.platform_contents[0],
         )
 
-        slug = re.sub(r"[^\w]", "_", topic, flags=re.ASCII)[:25]
+        slug = _make_slug(topic)
 
         # Step 1: Video Planner — 숏폼 전용 (목표 45초, 빠른 페이싱)
         video_plan = None
@@ -624,7 +651,7 @@ class PipelineController:
             except Exception as e:
                 logger.warning(f"  [VideoDirectorAgent] 실패 (기본 프롬프트 사용): {e}")
 
-        # Step 4: Imagen 4 씬 이미지 (9:16)
+        # Step 4: 씬 이미지 (9:16)
         image_paths = await generate_all_scenes(
             slide_texts=target.body,
             image_prompts=optimized_prompts,
@@ -632,6 +659,7 @@ class PipelineController:
             platform=platform,
             language=self.profile.language,
             slug=slug,
+            image_provider=image_provider,
         )
         image_paths = [p for p in image_paths if p]
         logger.info(f"  숏폼 씬 이미지 완료: {len(image_paths)}장")
@@ -666,7 +694,7 @@ class PipelineController:
             "video_plan": video_plan_dict,
         }
 
-    async def _run_render_text_image(self, content_dict: dict, topic: str, platform: str, character: dict | None = None) -> dict:
+    async def _run_render_text_image(self, content_dict: dict, topic: str, platform: str, character: dict | None = None, image_provider: str = "auto") -> dict:
         """텍스트+이미지 플랫폼 (x/threads): 단일 헤더 이미지 1장 생성"""
         from app.agents.media.image_generation import generate_scene_image, SCENES_DIR
         from app.agents.media.image_prompter import generate_image_prompts
@@ -679,7 +707,7 @@ class PipelineController:
             content_plan.platform_contents[0],
         )
 
-        slug = re.sub(r"[^\w]", "_", topic, flags=re.ASCII)[:25]
+        slug = _make_slug(topic)
 
         # 훅 텍스트 기반으로 단일 이미지 프롬프트 생성
         try:
@@ -725,10 +753,12 @@ class PipelineController:
         topic: str,
         platform: str = "youtube",
         scene_image_paths: list[str] | None = None,
+        scene_image_prompts: list[str] | None = None,
         with_tts: bool = False,
         tts_provider: str = "none",
         video_plan_dict: dict | None = None,
         bgm_category: str = "none",
+        video_prompts: list[str] | None = None,
     ) -> dict:
         """Stage 5: 씬 이미지 → Veo 클립 → moviepy 조립 → VideoReviewer → ShortsExtractor"""
         from app.agents.media.video_production import produce_video
@@ -758,16 +788,25 @@ class PipelineController:
             scene_durations = [float(s.get("duration_seconds", 6)) for s in video_plan_dict["shots"]]
 
         # Step 1: Veo + TTS + moviepy 영상 제작
+        # scene_image_prompts: render 단계에서 ImagePrompter+VideoDirector가 생성한 실제 프롬프트
+        # 없으면 copywriter의 dummy fallback 사용
+        effective_image_prompts = (
+            scene_image_prompts
+            or target.image_prompts
+            or [f"{topic} scene {i+1}" for i in range(len(target.body))]
+        )
         result = await produce_video(
             topic=topic,
             platform=platform,
             slide_texts=target.body,
-            image_prompts=target.image_prompts or [f"{topic} scene {i+1}" for i in range(len(target.body))],
+            image_prompts=effective_image_prompts,
             scene_image_paths=scene_image_paths or [],
             aspect_ratio=aspect_ratio,
             with_tts=with_tts,
             tts_provider=tts_provider,
             bgm_category=bgm_category,
+            video_plan_dict=video_plan_dict,
+            video_prompts=video_prompts,
         )
 
         # Step 2: Video Reviewer — 품질 검수
@@ -791,14 +830,14 @@ class PipelineController:
             except Exception as e:
                 logger.warning(f"  [VideoReviewer] 검수 실패 (무시): {e}")
 
-        # Step 3: Shorts Extractor — 롱폼(youtube)에서만 자동 Shorts 추출
-        # 숏폼 플랫폼(youtube_shorts, tiktok 등)은 이미 짧은 영상이므로 불필요
+        # Step 3: Shorts Extractor — youtube_shorts 플랫폼 선택 시에만 실행
+        # youtube(롱폼) 선택 시에는 자동 추출 안 함 — 사용자가 명시적으로 youtube_shorts 선택해야
         shorts_result = None
-        if platform == "youtube" and full_video and len(target.body) > 2:
+        if platform == "youtube_shorts" and full_video and len(target.body) > 2:
             try:
                 logger.info("  [ShortsExtractor] YouTube Shorts 자동 추출 중...")
                 from app.agents.media.video_production import OUTPUT_DIR as VIDEO_OUTPUT_DIR
-                slug = re.sub(r"[^\w]", "_", topic, flags=re.ASCII)[:25]
+                slug = _make_slug(topic)
                 shorts_path = VIDEO_OUTPUT_DIR / f"{slug}_auto_shorts.mp4"
 
                 clip_paths_raw = result.get("clip_paths", [])
@@ -910,7 +949,7 @@ class PipelineController:
         self.state.stage = "rendering"
         if self.state.design_plan:
             try:
-                slug = re.sub(r"[^\w]", "_", topic)[:30]
+                slug = _make_slug(topic, max_length=30)
                 self.state.image_paths = await self._render_images(self.state.design_plan, slug)
                 logger.info(f"캐러셀 이미지 {len(self.state.image_paths)}장 렌더링 완료")
             except Exception as e:

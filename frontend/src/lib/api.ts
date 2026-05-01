@@ -100,11 +100,11 @@ export const api = {
         body: JSON.stringify({ platform, slides, image_prompts }),
       }),
 
-    /** Stage 4: Imagen 3 씬 이미지 생성 */
-    runRender: (projectId: number, platform: string = "youtube") =>
+    /** Stage 4: 씬 이미지 생성 (Imagen 4 / DALL-E 3) */
+    runRender: (projectId: number, platform: string = "youtube", imageProvider: string = "auto") =>
       apiFetch(`/api/pipeline/${projectId}/stage/render`, {
         method: "POST",
-        body: JSON.stringify({ platform }),
+        body: JSON.stringify({ platform, image_provider: imageProvider }),
       }),
 
     /** 단일 슬라이드 이미지 재생성 */
@@ -115,6 +115,9 @@ export const api = {
       }),
 
     /** Stage 7: 영상 제작 (Veo + TTS + moviepy + BGM) */
+    getLog: (projectId: number) =>
+      apiFetch(`/api/pipeline/${projectId}/stage/log`),
+
     runVideo: (projectId: number, platform: string = "youtube", ttsProvider: string = "none", bgmCategory: string = "none") =>
       apiFetch(`/api/pipeline/${projectId}/stage/video`, {
         method: "POST",

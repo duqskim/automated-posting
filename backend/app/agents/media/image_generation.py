@@ -48,10 +48,110 @@ def _build_imagen_prompt(slide_text: str, image_prompt: str, topic: str, languag
         base = f"Cinematic visual scene representing: {slide_text[:150].strip()}"
 
     style_suffix = (
-        "Photorealistic, high quality, 8K resolution, dramatic professional lighting, "
-        "professional color grading, no text overlay, no watermarks, no logos"
+        "Cinematic photorealistic, Korean historical drama aesthetic, "
+        "warm amber and golden hour color palette, volumetric light rays, "
+        "Netflix historical drama cinematography, 8K, professional photography, "
+        "no text overlay, no watermarks, no logos"
     )
     return f"{base}. {style_suffix}"
+
+
+# OpenAI aspect ratio 매핑
+_DALLE3_SIZE = {
+    "16:9": "1792x1024",
+    "9:16": "1024x1792",
+    "1:1":  "1024x1024",
+    "4:3":  "1792x1024",
+}
+_GPT_IMAGE_SIZE = {
+    "16:9": "1536x1024",
+    "9:16": "1024x1536",
+    "1:1":  "1024x1024",
+    "4:3":  "1536x1024",
+}
+
+
+async def _generate_with_openai(prompt: str, output_path: Path, aspect_ratio: str = "16:9", model: str = "gpt-image-1") -> Path | None:
+    """OpenAI 이미지 생성 — gpt-image-1 (기본) 또는 dall-e-3"""
+    import httpx, base64
+
+    api_key = os.environ.get("OPENAI_API_KEY")
+    if not api_key:
+        logger.warning(f"  [{model}] OPENAI_API_KEY 없음 — 스킵")
+        return None
+
+    is_gpt = model == "gpt-image-1"
+    size = (_GPT_IMAGE_SIZE if is_gpt else _DALLE3_SIZE).get(aspect_ratio, "1536x1024" if is_gpt else "1792x1024")
+    logger.info(f"  [{model}] 생성 ({size}): {prompt[:60]}...")
+
+    payload: dict = {
+        "model": model,
+        "prompt": prompt,
+        "n": 1,
+        "size": size,
+    }
+    if is_gpt:
+        payload["quality"] = "medium"  # low / medium / high
+    else:
+        payload["quality"] = "standard"
+        payload["response_format"] = "b64_json"
+
+    try:
+        async with httpx.AsyncClient(timeout=120) as client:
+            resp = await client.post(
+                "https://api.openai.com/v1/images/generations",
+                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                json=payload,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+
+        img_bytes = base64.b64decode(data["data"][0]["b64_json"])
+        output_path.write_bytes(img_bytes)
+        logger.info(f"  [{model}] 저장: {output_path.name} ({len(img_bytes)//1024}KB)")
+        return output_path
+
+    except Exception as e:
+        logger.error(f"  [{model}] 실패: {e}")
+        return None
+
+
+async def _generate_with_gemini_native(prompt: str, output_path: Path, model: str = "gemini-2.0-flash-exp") -> Path | None:
+    """Gemini 네이티브 이미지 생성 (response_modalities=IMAGE)"""
+    from google import genai
+    from google.genai import types
+    import base64
+
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        logger.warning(f"  [{model}] GEMINI_API_KEY 없음")
+        return None
+
+    logger.info(f"  [{model}] 네이티브 이미지 생성: {prompt[:60]}...")
+    try:
+        client = genai.Client(api_key=api_key)
+        response = client.models.generate_content(
+            model=model,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                response_modalities=["IMAGE", "TEXT"],
+            ),
+        )
+        for part in response.candidates[0].content.parts:
+            if part.inline_data and part.inline_data.mime_type.startswith("image/"):
+                img_bytes = part.inline_data.data
+                if isinstance(img_bytes, str):
+                    img_bytes = base64.b64decode(img_bytes)
+                output_path.write_bytes(img_bytes)
+                logger.info(f"  [{model}] 저장: {output_path.name} ({len(img_bytes)//1024}KB)")
+                return output_path
+
+        logger.warning(f"  [{model}] 이미지 파트 없음")
+        return None
+
+    except Exception as e:
+        logger.error(f"  [{model}] 실패: {e}")
+        return None
 
 
 async def generate_scene_image(
@@ -61,48 +161,75 @@ async def generate_scene_image(
     topic: str = "",
     language: str = "en",
     aspect_ratio: str = "16:9",
+    image_provider: str = "auto",  # "auto"|"imagen"|"gemini-flash"|"gemini-pro"|"gpt-image-1"|"dalle"
 ) -> Path | None:
-    """Imagen 3으로 단일 씬 이미지 생성"""
+    """씬 이미지 생성
+    image_provider:
+      "auto"        — Imagen 4 우선, 쿼터 초과 시 gpt-image-1 폴백
+      "imagen"      — Imagen 4 전용
+      "gemini-flash"— Gemini 2.0 Flash 네이티브 이미지 생성
+      "gemini-pro"  — Gemini 2.5 Pro 네이티브 이미지 생성
+      "gpt-image-1" — gpt-image-1 전용 (권장)
+      "dalle"       — DALL-E 3 전용
+    """
+    prompt = _build_imagen_prompt(slide_text, image_prompt, topic, language)
+
+    if image_provider == "gemini-flash":
+        return await _generate_with_gemini_native(prompt, output_path, model="gemini-2.5-flash-image")
+
+    if image_provider == "gemini-pro":
+        return await _generate_with_gemini_native(prompt, output_path, model="gemini-3-pro-image-preview")
+
+    # gpt-image-1 전용
+    if image_provider == "gpt-image-1":
+        return await _generate_with_openai(prompt, output_path, aspect_ratio, model="gpt-image-1")
+
+    # DALL-E 3 전용
+    if image_provider == "dalle":
+        return await _generate_with_openai(prompt, output_path, aspect_ratio, model="dall-e-3")
+
+    # Imagen 4 시도 (auto or imagen)
     from google import genai
     from google.genai import types
 
     api_key = os.environ.get("GEMINI_API_KEY")
-    if not api_key:
-        raise ValueError("GEMINI_API_KEY 없음")
+    if api_key:
+        logger.info(f"  [Imagen4] 생성: {prompt[:60]}...")
+        try:
+            client = genai.Client(api_key=api_key)
+            response = client.models.generate_images(
+                model="imagen-4.0-generate-001",
+                prompt=prompt,
+                config=types.GenerateImagesConfig(
+                    aspect_ratio=aspect_ratio,
+                    number_of_images=1,
+                    person_generation="allow_adult",
+                    output_mime_type="image/jpeg",
+                    output_compression_quality=90,
+                ),
+            )
 
-    client = genai.Client(api_key=api_key)
-    prompt = _build_imagen_prompt(slide_text, image_prompt, topic, language)
+            if response.generated_images:
+                img_bytes = response.generated_images[0].image.image_bytes
+                if img_bytes:
+                    output_path.write_bytes(img_bytes)
+                    logger.info(f"  [Imagen4] 저장: {output_path.name} ({len(img_bytes)//1024}KB)")
+                    return output_path
 
-    logger.info(f"  [Imagen4] 생성: {prompt[:60]}...")
-
-    try:
-        response = client.models.generate_images(
-            model="imagen-4.0-generate-001",
-            prompt=prompt,
-            config=types.GenerateImagesConfig(
-                aspect_ratio=aspect_ratio,
-                number_of_images=1,
-                person_generation="allow_adult",
-                output_mime_type="image/jpeg",
-                output_compression_quality=90,
-            ),
-        )
-
-        if not response.generated_images:
             logger.warning("  [Imagen4] 이미지 없음 (안전 필터?)")
-            return None
 
-        img_bytes = response.generated_images[0].image.image_bytes
-        if img_bytes:
-            output_path.write_bytes(img_bytes)
-            logger.info(f"  [Imagen4] 저장: {output_path.name} ({len(img_bytes)//1024}KB)")
-            return output_path
+        except Exception as e:
+            if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
+                logger.warning("  [Imagen4] 쿼터 초과")
+            else:
+                logger.error(f"  [Imagen4] 실패: {e}")
 
-        return None
+        if image_provider == "imagen":
+            return None  # imagen 전용이면 폴백 없이 종료
 
-    except Exception as e:
-        logger.error(f"  [Imagen4] 실패: {e}")
-        return None
+        logger.info("  → gpt-image-1 폴백")
+
+    return await _generate_with_openai(prompt, output_path, aspect_ratio, model="gpt-image-1")
 
 
 async def generate_all_scenes(
@@ -112,6 +239,7 @@ async def generate_all_scenes(
     platform: str = "youtube",
     language: str = "en",
     slug: str = "",
+    image_provider: str = "auto",
 ) -> list[str]:
     """
     모든 슬라이드 씬 이미지 병렬 생성
@@ -137,6 +265,7 @@ async def generate_all_scenes(
             topic=topic,
             language=language,
             aspect_ratio=aspect_ratio,
+            image_provider=image_provider,
         ))
 
     results = await asyncio.gather(*tasks)

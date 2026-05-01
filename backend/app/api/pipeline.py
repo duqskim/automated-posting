@@ -73,7 +73,10 @@ class SaveSlidesRequest(BaseModel):
 def _current_step(stage_results: dict | None) -> str:
     if not stage_results:
         return "idle"
-    if stage_results.get("video"):
+    video = stage_results.get("video")
+    if video:
+        if isinstance(video, dict) and video.get("status") == "processing":
+            return "video_processing"
         return "video_done"
     if stage_results.get("images"):
         return "render_done"
@@ -115,16 +118,20 @@ async def get_stage_state(
 
     video_out = None
     if video_raw:
-        video_out = {
-            "platform": video_raw.get("platform"),
-            "full_video_url": _vurl(video_raw.get("full_video")),
-            "shorts_video_url": _vurl(video_raw.get("shorts_video")),
-            "auto_shorts_url": _vurl(video_raw.get("auto_shorts")),
-            "duration": video_raw.get("duration"),
-            "clips_count": video_raw.get("clips_count", 0),
-            "error": video_raw.get("error"),
-            "video_review": video_raw.get("video_review"),
-        }
+        if isinstance(video_raw, dict) and video_raw.get("status") == "processing":
+            # 백그라운드 처리 중 — 프론트에 processing 상태 전달
+            video_out = {"status": "processing", "platform": video_raw.get("platform", "")}
+        else:
+            video_out = {
+                "platform": video_raw.get("platform"),
+                "full_video_url": _vurl(video_raw.get("full_video")),
+                "shorts_video_url": _vurl(video_raw.get("shorts_video")),
+                "auto_shorts_url": _vurl(video_raw.get("auto_shorts")),
+                "duration": video_raw.get("duration"),
+                "clips_count": video_raw.get("clips_count", 0),
+                "error": video_raw.get("error"),
+                "video_review": video_raw.get("video_review"),
+            }
 
     render_type = sr.get("images_render_type", "scene")
 
@@ -336,7 +343,8 @@ async def save_slides(
 
 
 class RenderRequest(BaseModel):
-    platform: str = "youtube"  # 어떤 플랫폼용 씬 이미지를 만들지
+    platform: str = "youtube"
+    image_provider: str = "auto"  # "auto" | "imagen" | "dalle"
 
 
 @router.post("/{project_id}/stage/render")
@@ -363,6 +371,7 @@ async def run_stage_render(
             content_dict=sr["content"],
             topic=project.topic,
             platform=body.platform,
+            image_provider=body.image_provider,
             character=character,
         )
     except Exception as e:
@@ -383,8 +392,8 @@ async def run_stage_render(
         if thumbnail_text:
             try:
                 from app.agents.media.image_generation import generate_scene_image, SCENES_DIR
-                import re as _re
-                slug = _re.sub(r"[^\w]", "_", project.topic, flags=_re.ASCII)[:25]
+                from app.agents.pipeline import _make_slug
+                slug = _make_slug(project.topic)
                 thumb_path = SCENES_DIR / f"{slug}_thumbnail.jpg"
                 thumb_prompt = (
                     f"{thumbnail_text}. YouTube thumbnail style, bold visual impact, "
@@ -416,6 +425,10 @@ async def run_stage_render(
         sr["video_plan"] = render_result["video_plan"]
     if render_result.get("thumbnail_spec"):
         sr["thumbnail_spec"] = render_result["thumbnail_spec"]
+    if render_result.get("image_prompts"):
+        sr["scene_image_prompts"] = render_result["image_prompts"]  # Imagen용 (이미지 생성)
+    if render_result.get("video_prompts"):
+        sr["video_prompts"] = render_result["video_prompts"]  # Kling용 (영상 생성)
     project.stage_results = sr
     project.status = "passed"
     await db.commit()
@@ -443,7 +456,7 @@ async def regenerate_single_image(
 ):
     """단일 슬라이드 이미지 재생성"""
     from app.agents.media.image_generation import generate_scene_image, SCENES_DIR, PLATFORM_ASPECT
-    import re
+    from app.agents.pipeline import content_plan_from_dict, _make_slug
 
     project = await _get_user_project(project_id, current_user.id, db)
     sr = project.stage_results or {}
@@ -451,7 +464,6 @@ async def regenerate_single_image(
     if not sr.get("content"):
         raise HTTPException(status_code=400, detail="글쓰기를 먼저 실행해주세요")
 
-    from app.agents.pipeline import content_plan_from_dict
     content_plan = content_plan_from_dict(sr["content"])
 
     target = next((pc for pc in content_plan.platform_contents if pc.platform == body.platform), None)
@@ -461,7 +473,7 @@ async def regenerate_single_image(
     if slide_index >= len(target.body):
         raise HTTPException(status_code=400, detail="슬라이드 인덱스 초과")
 
-    slug = re.sub(r"[^\w]", "_", project.topic)[:25]
+    slug = _make_slug(project.topic)
     path = SCENES_DIR / f"{slug}_{body.platform}_{slide_index:02d}.jpg"
     aspect_ratio = PLATFORM_ASPECT.get(body.platform, "16:9")
 
@@ -515,7 +527,10 @@ async def run_stage_video(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Stage 7: 영상 제작 (Veo 씬 클립 + TTS + moviepy 조립)"""
+    """Stage 7: 영상 제작 — Celery 비동기 (Redis 있을 때) 또는 동기 폴백"""
+    from app.tasks.celery_app import ASYNC_MODE
+    from app.tasks.pipeline_task import run_video_task
+
     project = await _get_user_project(project_id, current_user.id, db)
     sr = project.stage_results or {}
 
@@ -524,50 +539,83 @@ async def run_stage_video(
     if not sr.get("images"):
         raise HTTPException(status_code=400, detail="씬 이미지를 먼저 생성해주세요 (Step 4)")
 
-    controller = PipelineController(project.market)
-
-    try:
-        result = await controller.run_video(
-            content_dict=sr["content"],
+    if ASYNC_MODE:
+        # ── Celery 모드: 즉시 반환, 백그라운드에서 처리 ──
+        task = run_video_task.delay(
+            project_id=project_id,
+            market=project.market,
             topic=project.topic,
+            content_dict=sr["content"],
             platform=body.platform,
             scene_image_paths=sr.get("images", []),
+            scene_image_prompts=sr.get("scene_image_prompts"),
             tts_provider=body.tts_provider,
             video_plan_dict=sr.get("video_plan"),
             bgm_category=body.bgm_category,
+            video_prompts=sr.get("video_prompts"),
         )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"영상 제작 실패: {e}")
+        logger.info(f"[API] 영상 제작 Celery 태스크 시작: task_id={task.id}")
 
-    def _video_url(path: str | None) -> str | None:
-        return f"/api/videos/{Path(path).name}" if path else None
+        # DB에 processing 상태 저장
+        sr = dict(sr)
+        sr["video"] = {"status": "processing", "platform": body.platform, "task_id": task.id}
+        project.stage_results = sr
+        await db.commit()
 
-    # stage_results에 영상 결과 저장
-    sr = dict(sr)
-    sr["video"] = {
-        "platform": body.platform,
-        "full_video": result.get("full_video"),
-        "shorts_video": result.get("shorts_video"),
-        "auto_shorts": result.get("auto_shorts"),
-        "duration": result.get("duration"),
-        "clips_count": result.get("clips_count", 0),
-        "error": result.get("error"),
-        "video_review": result.get("video_review"),
-    }
-    project.stage_results = sr
-    await db.commit()
+        return {
+            "step": "video_processing",
+            "task_id": task.id,
+            "status": "processing",
+            "message": "영상 제작이 백그라운드에서 시작됐습니다. 완료되면 자동으로 업데이트됩니다.",
+        }
+    else:
+        # ── 동기 폴백: 서버 블로킹 (Redis 없을 때) ──
+        logger.warning(f"[API] Redis 없음 — 영상 제작 동기 실행 (블로킹): project_id={project_id}")
+        controller = PipelineController(project.market)
 
-    return {
-        "step": "video_done",
-        "platform": body.platform,
-        "full_video_url": _video_url(result.get("full_video")),
-        "shorts_video_url": _video_url(result.get("shorts_video")),
-        "auto_shorts_url": _video_url(result.get("auto_shorts")),
-        "duration": result.get("duration"),
-        "clips_count": result.get("clips_count", 0),
-        "error": result.get("error"),
-        "video_review": result.get("video_review"),
-    }
+        try:
+            result = await controller.run_video(
+                content_dict=sr["content"],
+                topic=project.topic,
+                platform=body.platform,
+                scene_image_paths=sr.get("images", []),
+                scene_image_prompts=sr.get("scene_image_prompts"),
+                tts_provider=body.tts_provider,
+                video_plan_dict=sr.get("video_plan"),
+                bgm_category=body.bgm_category,
+                video_prompts=sr.get("video_prompts"),
+            )
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"영상 제작 실패: {e}")
+
+        def _video_url(path: str | None) -> str | None:
+            return f"/api/videos/{Path(path).name}" if path else None
+
+        sr = dict(sr)
+        sr["video"] = {
+            "platform": body.platform,
+            "full_video": result.get("full_video"),
+            "shorts_video": result.get("shorts_video"),
+            "auto_shorts": result.get("auto_shorts"),
+            "duration": result.get("duration"),
+            "clips_count": result.get("clips_count", 0),
+            "error": result.get("error"),
+            "video_review": result.get("video_review"),
+        }
+        project.stage_results = sr
+        await db.commit()
+
+        return {
+            "step": "video_done",
+            "platform": body.platform,
+            "full_video_url": _video_url(result.get("full_video")),
+            "shorts_video_url": _video_url(result.get("shorts_video")),
+            "auto_shorts_url": _video_url(result.get("auto_shorts")),
+            "duration": result.get("duration"),
+            "clips_count": result.get("clips_count", 0),
+            "error": result.get("error"),
+            "video_review": result.get("video_review"),
+        }
 
 
 # ─── 기존 풀 파이프라인 (호환) ────────────────────────────────
@@ -676,6 +724,44 @@ async def get_contents(
         )
         for row in rows
     ]
+
+
+@router.get("/{project_id}/stage/log")
+async def get_stage_log(
+    project_id: int,
+    lines: int = 30,
+    current_user: User = Depends(get_current_user),
+):
+    """Celery worker 로그 최신 N줄 반환 (영상 제작 진행 현황용)"""
+    import os
+    log_path = "/tmp/celery_worker.log"
+    if not os.path.exists(log_path):
+        return {"lines": [], "running": False}
+
+    with open(log_path, "r", encoding="utf-8", errors="ignore") as f:
+        all_lines = f.readlines()
+
+    recent = [l.rstrip() for l in all_lines[-lines:] if l.strip()]
+
+    # 간단한 진행 단계 파싱
+    step = "대기 중"
+    for line in reversed(recent):
+        if "영상 조립" in line or "Assembly" in line:
+            step = "영상 조립 중 (ffmpeg)"
+            break
+        if "TTS" in line and "완료" in line:
+            step = "나레이션 완료 → 영상 조립 준비"
+            break
+        if "TTS" in line and "슬라이드" in line:
+            import re
+            m = re.search(r"슬라이드 (\d+)", line)
+            step = f"나레이션 생성 중 (슬라이드 {m.group(1)})" if m else "나레이션 생성 중"
+            break
+        if "Veo" in line or "veo" in line:
+            step = "씬 영상 생성 중 (Veo)"
+            break
+
+    return {"lines": recent, "step": step, "running": True}
 
 
 async def _get_user_project(project_id: int, user_id: int, db: AsyncSession) -> Project:

@@ -1,14 +1,21 @@
 """
-VideoProductionAgent — Veo (Google Flow) + ElevenLabs + moviepy 영상 제작
+VideoProductionAgent — Kling AI + ElevenLabs + ffmpeg 영상 제작
 
 파이프라인:
-  1. scene_clips: 슬라이드별 image_prompt → Veo API → .mp4 클립
-  2. narrations: 슬라이드 텍스트 → ElevenLabs TTS → .mp3
-  3. assemble: 클립 + 음성 + 자막 → 풀 영상 + 쇼츠
+  1. scene_clips: 슬라이드별 image_prompt → Kling AI image-to-video → .mp4 클립
+  2. narrations: 슬라이드 텍스트 → Gemini/ElevenLabs TTS → .mp3
+  3. assemble: 클립 + 음성 → 풀 영상 + 쇼츠
 """
 import asyncio
+import base64
+import json
+import math
 import os
+import re
+import shutil
+import subprocess
 import time
+import unicodedata
 from pathlib import Path
 from loguru import logger
 
@@ -22,97 +29,231 @@ AUDIO_DIR = OUTPUT_DIR / "audio"
 AUDIO_DIR.mkdir(parents=True, exist_ok=True)
 
 
-# ─── Veo 씬 클립 생성 ────────────────────────────────────────
+# ─── Kling AI 씬 클립 생성 ───────────────────────────────────
 
-def _veo_motion_prompt(image_prompt: str, slide_text: str) -> str:
-    """이미지 방향 + 슬라이드 텍스트 → Veo 모션 프롬프트"""
-    base = image_prompt.strip() if image_prompt.strip() else slide_text[:100]
-    return (
-        f"{base}. "
-        "Cinematic camera movement, slow smooth pan or zoom, "
-        "dynamic lighting transitions, high quality, photorealistic video"
-    )
+def _kling_jwt(access_key: str, secret_key: str) -> str:
+    """Kling API 인증용 JWT 토큰 생성"""
+    import jwt
+    now = int(time.time())
+    payload = {"iss": access_key, "exp": now + 1800, "nbf": now - 5}
+    return jwt.encode(payload, secret_key, algorithm="HS256")
 
 
-async def generate_veo_clip(
+def _kling_motion_prompt(image_prompt: str, slide_text: str) -> str:
+    """VideoPrompter가 생성한 motion 프롬프트 사용, 없으면 슬라이드 텍스트 fallback"""
+    return image_prompt.strip() if image_prompt.strip() else slide_text[:100]
+
+
+async def generate_kling_clip(
     image_path: Path,
     image_prompt: str,
     slide_text: str,
     output_path: Path,
     aspect_ratio: str = "16:9",
-    duration_seconds: int = 6,
+    duration: str = "5",  # "5" or "10"
+    mode: str = "std",    # "std" or "pro"
+    end_image_path: Path | None = None,  # image_tail: 시작→끝 장면 보간 (Google Flow 방식)
 ) -> Path | None:
-    """Veo 2 이미지→영상 클립 생성 (image-to-video)"""
-    from google import genai
-    from google.genai import types
+    """Kling AI 이미지→영상 클립 생성 (image-to-video)
 
-    api_key = os.environ.get("GEMINI_API_KEY")
-    if not api_key:
-        raise ValueError("GEMINI_API_KEY 없음")
+    end_image_path 제공 시: 시작 이미지 → 끝 이미지 보간 영상 생성 (훨씬 자연스러운 모션)
+    """
+    import httpx
 
-    client = genai.Client(api_key=api_key)
+    from app.settings import settings
+    access_key = settings.kling_access_key or os.environ.get("KLING_ACCESS_KEY", "")
+    secret_key = settings.kling_secret_key or os.environ.get("KLING_SECRET_KEY", "")
+    if not access_key or not secret_key:
+        raise ValueError("KLING_ACCESS_KEY / KLING_SECRET_KEY 없음")
 
-    prompt = _veo_motion_prompt(image_prompt, slide_text)
-    logger.info(f"  [Veo] 클립 생성: {prompt[:70]}...")
+    prompt = _kling_motion_prompt(image_prompt, slide_text)
+    tail_note = " [+image_tail]" if end_image_path and end_image_path.exists() else ""
+    logger.info(f"  [Kling{tail_note}] 클립 생성: {prompt[:70]}...")
 
     try:
-        img_bytes = image_path.read_bytes()
+        img_b64 = base64.b64encode(image_path.read_bytes()).decode()
 
-        # sync 호출을 thread pool에서 실행 (이벤트 루프 블로킹 방지)
-        operation = await asyncio.to_thread(
-            client.models.generate_videos,
-            model="veo-2.0-generate-001",
-            prompt=prompt,
-            image=types.Image(image_bytes=img_bytes, mime_type="image/jpeg"),
-            config=types.GenerateVideosConfig(
-                aspect_ratio=aspect_ratio,
-                duration_seconds=duration_seconds,
-                number_of_videos=1,
-                person_generation="allow_adult",
-            ),
-        )
+        token = _kling_jwt(access_key, secret_key)
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+        }
 
-        # 폴링 (최대 5분)
+        payload = {
+            "model_name": "kling-v1-6",
+            "image": img_b64,
+            "prompt": prompt,
+            "duration": duration,
+            "aspect_ratio": aspect_ratio,
+            "mode": mode,
+        }
+
+        # image_tail: 다음 슬라이드 이미지를 end frame으로 → 자연스러운 장면 전환
+        if end_image_path and end_image_path.exists():
+            payload["image_tail"] = base64.b64encode(end_image_path.read_bytes()).decode()
+
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.post(
+                "https://api.klingai.com/v1/videos/image2video",
+                headers=headers,
+                json=payload,
+            )
+        if resp.status_code == 429:
+            logger.warning("  [Kling] 429 Rate Limit — Ken Burns fallback으로 전환")
+            return None
+        resp.raise_for_status()
+        data = resp.json()
+
+        if data.get("code") != 0:
+            logger.error(f"  [Kling] API 오류: {data.get('message')}")
+            return None
+
+        task_id = data["data"]["task_id"]
+        logger.info(f"  [Kling] 태스크 생성: {task_id}")
+
+        # 폴링 (최대 5분 — JWT 30분 유효하므로 루프 시작 전 1회만 갱신)
         max_wait = 300
         waited = 0
-        while not operation.done:
-            await asyncio.sleep(10)
-            waited += 10
-            operation = await asyncio.to_thread(client.operations.get, operation)
-            logger.info(f"    [Veo] 대기 중... {waited}s")
-            if waited >= max_wait:
-                logger.warning("  [Veo] 타임아웃")
-                return None
+        token = _kling_jwt(access_key, secret_key)
+        async with httpx.AsyncClient(timeout=30) as client:
+            while waited < max_wait:
+                await asyncio.sleep(10)
+                waited += 10
 
-        if operation.error:
-            logger.error(f"  [Veo] 에러: {operation.error}")
-            return None
+                status_resp = await client.get(
+                    f"https://api.klingai.com/v1/videos/image2video/{task_id}",
+                    headers={"Authorization": f"Bearer {token}"},
+                )
+                status_data = status_resp.json()
+                task_status = status_data["data"]["task_status"]
+                logger.info(f"    [Kling] 상태: {task_status} ({waited}s)")
 
-        videos = operation.response.generated_videos if operation.response else []
-        if not videos:
-            logger.warning("  [Veo] 생성된 영상 없음")
-            return None
+                if task_status == "succeed":
+                    video_url = status_data["data"]["task_result"]["videos"][0]["url"]
+                    dl_resp = await client.get(video_url, follow_redirects=True)
+                    dl_resp.raise_for_status()
+                    output_path.write_bytes(dl_resp.content)
+                    logger.info(f"  [Kling] 저장: {output_path.name} ({len(dl_resp.content)//1024}KB)")
+                    return output_path
+                elif task_status == "failed":
+                    logger.error(f"  [Kling] 생성 실패: {status_data['data'].get('task_status_msg')}")
+                    return None
 
-        video = videos[0].video
-        if video.video_bytes:
-            output_path.write_bytes(video.video_bytes)
-            logger.info(f"  [Veo] 저장 (bytes): {output_path.name} ({len(video.video_bytes)//1024}KB)")
-            return output_path
-        elif video.uri:
-            # URI 다운로드 (httpx로 SSL 인증서 문제 우회)
-            import httpx
-            async with httpx.AsyncClient(verify=False, follow_redirects=True) as http:
-                resp = await http.get(video.uri, headers={"X-Goog-Api-Key": api_key})
-                resp.raise_for_status()
-                output_path.write_bytes(resp.content)
-            logger.info(f"  [Veo] 저장 (URI): {output_path.name} ({len(resp.content)//1024}KB)")
-            return output_path
-
+        logger.warning("  [Kling] 타임아웃")
         return None
 
     except Exception as e:
-        logger.error(f"  [Veo] 실패: {e}")
+        logger.error(f"  [Kling] 실패: {e}")
         return None
+
+
+_KENBURNS_EFFECTS = [
+    # (label, z_expr, x_expr, y_expr) — 5초(125프레임) 기준, 25% 줌 or 10% 팬
+    ("zoom_in",   "min(zoom+0.002,1.25)", "iw/2-(iw/zoom/2)",          "ih/2-(ih/zoom/2)"),
+    ("zoom_out",  "if(eq(on,1),1.25,max(zoom-0.002,1.0))", "iw/2-(iw/zoom/2)", "ih/2-(ih/zoom/2)"),
+    ("pan_right", "1.1",  "(iw-iw/zoom)*min(on/d,1)",           "ih/2-(ih/zoom/2)"),
+    ("pan_left",  "1.1",  "(iw-iw/zoom)*(1-min(on/d,1))",       "ih/2-(ih/zoom/2)"),
+    ("diag_tl",   "min(zoom+0.002,1.25)", "iw*0.05*min(on/d,1)", "ih*0.05*min(on/d,1)"),
+]
+
+
+async def generate_kenburns_clip(
+    image_path: Path,
+    output_path: Path,
+    duration: int = 5,
+    aspect_ratio: str = "16:9",
+    effect_index: int = 0,
+) -> Path | None:
+    """ffmpeg Ken Burns 효과 — Kling 실패 시 fallback (5초 고정, 효과 5종 순환)"""
+    if aspect_ratio == "9:16":
+        w, h = 720, 1280
+    elif aspect_ratio == "1:1":
+        w, h = 1080, 1080
+    else:
+        w, h = 1280, 720
+
+    label, z_expr, x_expr, y_expr = _KENBURNS_EFFECTS[effect_index % len(_KENBURNS_EFFECTS)]
+    frames = duration * 25
+    zoom_filter = (
+        f"scale={w*2}:{h*2},"
+        f"zoompan=z='{z_expr}':x='{x_expr}':y='{y_expr}'"
+        f":d={frames}:s={w}x{h}:fps=25,"
+        f"fps=25"
+    )
+    cmd = [
+        "ffmpeg", "-y", "-loglevel", "error",
+        "-loop", "1", "-i", str(image_path),
+        "-vf", zoom_filter,
+        "-t", str(duration),
+        "-c:v", "libx264", "-preset", "fast", "-crf", "23",
+        "-pix_fmt", "yuv420p",
+        str(output_path),
+    ]
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+        )
+        _, stderr = await proc.communicate()
+        if proc.returncode != 0:
+            logger.error(f"  [KenBurns:{label}] ffmpeg 실패: {stderr.decode()[:200]}")
+            return None
+        logger.info(f"  [KenBurns:{label}] 저장: {output_path.name}")
+        return output_path
+    except Exception as e:
+        logger.error(f"  [KenBurns] 실패: {e}")
+        return None
+
+
+async def generate_kenburns_sequence(
+    image_path: Path,
+    output_path: Path,
+    audio_duration: float,
+    aspect_ratio: str = "16:9",
+    start_effect_index: int = 0,
+) -> Path | None:
+    """TTS 길이에 맞는 Ken Burns 시퀀스 — 5초 클립 N개를 병렬 생성 후 concat"""
+    num_clips = max(1, math.ceil(audio_duration / 5))
+    parent = output_path.parent / "_kb_tmp"
+    parent.mkdir(exist_ok=True)
+
+    try:
+        # 모든 클립을 병렬 생성 (독립적인 ffmpeg 프로세스)
+        kb_paths = [parent / f"{output_path.stem}_kb{k:02d}.mp4" for k in range(num_clips)]
+        results = await asyncio.gather(
+            *(
+                generate_kenburns_clip(
+                    image_path=image_path,
+                    output_path=kb_paths[k],
+                    duration=5,
+                    aspect_ratio=aspect_ratio,
+                    effect_index=(start_effect_index + k) % len(_KENBURNS_EFFECTS),
+                )
+                for k in range(num_clips)
+            ),
+            return_exceptions=True,
+        )
+        tmp_clips = [r for r in results if isinstance(r, Path)]
+
+        if not tmp_clips:
+            return None
+
+        if len(tmp_clips) == 1:
+            shutil.copy2(tmp_clips[0], output_path)
+        else:
+            # 단순 concat (no xfade — 빠름)
+            list_file = parent / f"{output_path.stem}_list.txt"
+            list_file.write_text("\n".join(f"file '{p}'" for p in tmp_clips))
+            subprocess.run(
+                ["ffmpeg", "-y", "-loglevel", "error", "-f", "concat", "-safe", "0",
+                 "-i", str(list_file), "-c", "copy", str(output_path)],
+                check=True, timeout=120,
+            )
+
+        logger.info(f"  [KenBurns-seq] {num_clips}클립 병렬 → {output_path.name}")
+        return output_path if output_path.exists() else None
+
+    finally:
+        shutil.rmtree(parent, ignore_errors=True)
 
 
 # ─── ElevenLabs TTS ─────────────────────────────────────────
@@ -148,93 +289,176 @@ async def generate_tts(
         return None
 
 
-# ─── moviepy 조립 ────────────────────────────────────────────
+# ─── ffmpeg 조립 (빠름 — 프레임 디코딩 없음) ─────────────────
+
+def _get_video_duration(path: Path) -> float:
+    """ffprobe로 영상 길이 반환"""
+    try:
+        r = subprocess.run(
+            ["ffprobe", "-v", "quiet", "-print_format", "json", "-show_format", str(path)],
+            capture_output=True, text=True, timeout=30,
+        )
+        return float(json.loads(r.stdout).get("format", {}).get("duration", 0))
+    except Exception:
+        return 0.0
+
+
+def _get_clip_duration(clip_path: Path) -> float:
+    """ffprobe로 비디오 스트림 길이만 반환 (오디오 제외)"""
+    try:
+        r = subprocess.run(
+            ["ffprobe", "-v", "quiet", "-print_format", "json",
+             "-show_streams", "-select_streams", "v:0", str(clip_path)],
+            capture_output=True, text=True, timeout=15,
+        )
+        streams = json.loads(r.stdout).get("streams", [])
+        return float(streams[0].get("duration", 6)) if streams else 6.0
+    except Exception:
+        return 6.0
+
+
+def _mix_audio_into_clip(clip_path: Path, audio_path: Path | None, out_path: Path) -> Path:
+    """ffmpeg로 클립에 오디오 삽입 — libx264 재인코딩으로 concat 호환성 보장"""
+    if audio_path and audio_path.exists():
+        cmd = [
+            "ffmpeg", "-y", "-loglevel", "error",
+            "-stream_loop", "-1",       # 비디오 무한 루프 (오디오보다 짧을 때 대비)
+            "-i", str(clip_path),
+            "-i", str(audio_path),
+            "-map", "0:v:0", "-map", "1:a:0",
+            "-c:v", "libx264", "-preset", "fast", "-crf", "23",
+            "-c:a", "aac", "-b:a", "128k",
+            "-shortest",                # 오디오 끝나면 stop
+            str(out_path),
+        ]
+    else:
+        # 오디오 없음 → 무음 트랙 추가 (acrossfade concat 호환성 유지)
+        video_dur = _get_clip_duration(clip_path)
+        cmd = [
+            "ffmpeg", "-y", "-loglevel", "error",
+            "-i", str(clip_path),
+            "-f", "lavfi", "-i", f"aevalsrc=0:channel_layout=stereo:sample_rate=44100:duration={video_dur}",
+            "-map", "0:v:0", "-map", "1:a:0",
+            "-c:v", "libx264", "-preset", "fast", "-crf", "23",
+            "-c:a", "aac", "-b:a", "128k",
+            str(out_path),
+        ]
+
+    subprocess.run(cmd, check=True, timeout=120)  # noqa: S603
+    return out_path
+
+
+def _has_audio_stream(path: Path) -> bool:
+    """ffprobe로 오디오 스트림 존재 여부 확인"""
+    try:
+        r = subprocess.run(
+            ["ffprobe", "-v", "quiet", "-show_streams", "-select_streams", "a:0", str(path)],
+            capture_output=True, text=True, timeout=10,
+        )
+        return "codec_type=audio" in r.stdout
+    except Exception:
+        return False
+
+
+def _ffmpeg_concat(clip_paths: list[Path], output_path: Path, transition_duration: float = 0.5) -> float:
+    """ffmpeg xfade(영상) + acrossfade(오디오) 트랜지션으로 클립들 이어붙임"""
+    # 각 클립의 실제 길이 확인 (single-clip path에서도 재사용)
+    durations = [_get_video_duration(p) or 5.0 for p in clip_paths]
+
+    if len(clip_paths) == 1:
+        shutil.copy2(clip_paths[0], output_path)
+        return durations[0]
+
+    # 오디오 스트림 여부: 모든 클립에 오디오가 있어야 acrossfade 적용
+    clips_have_audio = all(_has_audio_stream(p) for p in clip_paths)
+
+    inputs = []
+    for p in clip_paths:
+        inputs += ["-i", str(p)]
+
+    filter_parts = []
+    offset = 0.0
+    prev_v = "0:v"
+    prev_a = "0:a" if clips_have_audio else None
+
+    for i in range(1, len(clip_paths)):
+        offset += durations[i - 1] - transition_duration
+        v_out = f"v{i}"
+        filter_parts.append(
+            f"[{prev_v}][{i}:v]xfade=transition=fade:duration={transition_duration:.3f}:offset={offset:.3f}[{v_out}]"
+        )
+        prev_v = v_out
+
+        if clips_have_audio:
+            a_out = f"a{i}"
+            filter_parts.append(
+                f"[{prev_a}][{i}:a]acrossfade=d={transition_duration:.3f}[{a_out}]"
+            )
+            prev_a = a_out
+
+    filter_complex = "; ".join(filter_parts)
+
+    cmd = [
+        "ffmpeg", "-y", "-loglevel", "error",
+        *inputs,
+        "-filter_complex", filter_complex,
+        "-map", f"[{prev_v}]",
+    ]
+    if clips_have_audio:
+        cmd += ["-map", f"[{prev_a}]", "-c:a", "aac", "-b:a", "128k"]
+    cmd += [
+        "-c:v", "libx264", "-preset", "fast", "-crf", "23",
+        "-pix_fmt", "yuv420p",
+        "-movflags", "+faststart",
+        str(output_path),
+    ]
+    subprocess.run(cmd, check=True, timeout=600)
+    return _get_video_duration(output_path)
+
 
 def assemble_video(
     clip_paths: list[Path],
     audio_paths: list[Path | None],
-    slide_texts: list[str],
     output_path: Path,
-    shorts_path: Path | None = None,
-    shorts_slides: int = 3,
 ) -> dict:
-    """클립 + 음성 + 자막 → 풀 영상 + (선택) 쇼츠"""
-    from moviepy import VideoFileClip, AudioFileClip, concatenate_videoclips, TextClip, CompositeVideoClip, vfx
+    """클립 + 음성 → 풀 영상 (ffmpeg, 빠름)"""
+    logger.info(f"  [Assembly] 클립 {len(clip_paths)}개 조립 시작 (ffmpeg concat)")
 
-    logger.info(f"  [Assembly] 클립 {len(clip_paths)}개 조립 시작")
+    tmp_dir = output_path.parent / "_tmp_assembly"
+    tmp_dir.mkdir(exist_ok=True)
 
-    segments = []
+    merged_clips: list[Path] = []
     for i, clip_path in enumerate(clip_paths):
         if not clip_path or not clip_path.exists():
             logger.warning(f"  [Assembly] 클립 {i+1} 없음 — 스킵")
             continue
-
         try:
-            clip = VideoFileClip(str(clip_path))
-
-            # 음성 오버레이
             audio_path = audio_paths[i] if i < len(audio_paths) else None
-            if audio_path and audio_path.exists():
-                audio = AudioFileClip(str(audio_path))
-                # 클립 길이를 오디오에 맞게 조정
-                if audio.duration > clip.duration:
-                    # moviepy v2: loop() 제거됨 → vfx.Loop 사용
-                    clip = clip.with_effects([vfx.Loop(duration=audio.duration)])
-                else:
-                    audio = audio.with_duration(clip.duration)
-                clip = clip.with_audio(audio)
-
-            # 자막 오버레이
-            text = slide_texts[i] if i < len(slide_texts) else ""
-            if text:
-                try:
-                    txt = TextClip(
-                        text=text[:80],
-                        font_size=36,
-                        color="white",
-                        stroke_color="black",
-                        stroke_width=2,
-                        method="caption",
-                        size=(clip.w - 80, None),
-                    ).with_position(("center", clip.h - 150)).with_duration(clip.duration)
-                    clip = CompositeVideoClip([clip, txt])
-                except Exception as e:
-                    logger.warning(f"  [Assembly] 자막 오버레이 실패 (폰트 문제): {e}")
-
-            segments.append(clip)
+            merged = tmp_dir / f"merged_{i:03d}.mp4"
+            _mix_audio_into_clip(clip_path, audio_path, merged)
+            merged_clips.append(merged)
         except Exception as e:
-            logger.error(f"  [Assembly] 클립 {i+1} 처리 실패: {e}")
+            logger.error(f"  [Assembly] 클립 {i+1} 오디오 삽입 실패: {e}")
+            merged_clips.append(clip_path)  # 오디오 없이 원본 사용
 
-    if not segments:
+    if not merged_clips:
         return {"error": "조립할 클립 없음"}
 
-    # 풀 영상 합치기
-    final = concatenate_videoclips(segments, method="compose")
-    final.write_videofile(
-        str(output_path), fps=24, codec="libx264", audio_codec="aac", logger=None,
-        ffmpeg_params=["-movflags", "faststart"],
-    )
-    logger.info(f"  [Assembly] 풀 영상 저장: {output_path.name} ({final.duration:.1f}초)")
+    # 풀 영상
+    duration = _ffmpeg_concat(merged_clips, output_path)
+    logger.info(f"  [Assembly] 풀 영상 완료: {output_path.name} ({duration:.1f}초)")
 
     result = {
         "full_video": str(output_path),
-        "duration": round(final.duration, 1),
-        "clips_count": len(segments),
+        "duration": round(duration, 1),
+        "clips_count": len(merged_clips),
     }
 
-    # 쇼츠 버전 (앞부분 N개 슬라이드)
-    if shorts_path and len(segments) > shorts_slides:
-        try:
-            shorts = concatenate_videoclips(segments[:shorts_slides], method="compose")
-            shorts.write_videofile(
-                str(shorts_path), fps=24, codec="libx264", audio_codec="aac", logger=None,
-                ffmpeg_params=["-movflags", "faststart"],
-            )
-            result["shorts_video"] = str(shorts_path)
-            result["shorts_duration"] = round(shorts.duration, 1)
-            logger.info(f"  [Assembly] 쇼츠 저장: {shorts_path.name} ({shorts.duration:.1f}초)")
-        except Exception as e:
-            logger.warning(f"  [Assembly] 쇼츠 생성 실패: {e}")
+    # 쇼츠는 assemble_video에서 자동 생성하지 않음
+    # 롱폼 완성 후 ShortsExtractor를 별도 단계로 실행해야 함
+
+    # 임시 파일 정리
+    shutil.rmtree(tmp_dir, ignore_errors=True)
 
     return result
 
@@ -252,6 +476,8 @@ async def produce_video(
     with_tts: bool = False,
     tts_provider: str = "none",   # "none" | "gemini" | "elevenlabs"
     bgm_category: str = "none",   # "none" | "cinematic" | "ambient" | "upbeat" | "dramatic"
+    video_plan_dict: dict | None = None,  # VideoPlannerAgent 결과
+    video_prompts: list[str] | None = None,  # 렌더 단계에서 캐시된 Kling 전용 프롬프트
 ) -> dict:
     """
     Step 4 씬 이미지 → Veo 클립 → moviepy 조립 → 영상
@@ -264,21 +490,68 @@ async def produce_video(
           "duration": 42.5,
         }
     """
-    import re
-    slug = re.sub(r"[^\w]", "_", topic, flags=re.ASCII)[:25]
+    # 유니코드 정규화 후 ASCII 변환, 불가 시 원본 그대로 (한국어 포함)
+    ascii_topic = unicodedata.normalize("NFKD", topic).encode("ascii", "ignore").decode()
+    slug_base = ascii_topic if ascii_topic.strip() else topic
+    slug = re.sub(r"[^\w]", "_", slug_base)[:25].strip("_") or "video"
 
-    logger.info(f"=== VideoProduction: '{topic}' [{platform}] {len(slide_texts)}슬라이드 ===")
+    logger.info(f"=== VideoProduction: '{topic}' [{platform}] {len(slide_texts)}슬라이드 (Kling AI) ===")
 
-    # Step 1: 씬 이미지 → Veo 클립 (순차 — 병렬 시 API rate limit)
+    # video_plan에서 샷 스펙 로드
+    shot_map: dict = {}
+    if video_plan_dict and video_plan_dict.get("shots"):
+        from app.agents.media.video_director import apply_shot_spec_to_veo_prompt
+        from app.agents.media.video_planner import ShotSpec
+        for shot_data in video_plan_dict["shots"]:
+            try:
+                shot_map[shot_data["slide_index"]] = ShotSpec(**shot_data)
+            except Exception:
+                pass
+        logger.info(f"  [VideoDirector] 샷 스펙 {len(shot_map)}개 로드")
+
+    # Step 1: TTS 먼저 생성 (Ken Burns duration 결정을 위해 클립보다 앞에)
+    audio_paths: list[Path | None] = [None] * len(slide_texts)
+    if tts_provider == "gemini":
+        logger.info(f"  [Step 1] Gemini TTS {len(slide_texts)}개 생성...")
+        from app.agents.media.tts_gemini import generate_narrations_gemini
+        audio_paths = await generate_narrations_gemini(
+            slide_texts=slide_texts,
+            slug=slug,
+            platform=platform,
+        )
+    elif tts_provider == "elevenlabs" or with_tts:
+        logger.info(f"  [Step 1] ElevenLabs TTS {len(slide_texts)}개 생성...")
+        tts_tasks = []
+        for i, text in enumerate(slide_texts):
+            path = AUDIO_DIR / f"{slug}_{platform}_{i:02d}.mp3"
+            tts_tasks.append(generate_tts(text, path, voice_id=tts_voice_id))
+        audio_paths = list(await asyncio.gather(*tts_tasks))
+
+    # Step 2a: Kling 전용 영상 프롬프트 확보
+    # 렌더 단계에서 캐시된 prompts가 있으면 재사용, 없으면 VideoPrompter 호출
+    if video_prompts and len(video_prompts) >= len(slide_texts):
+        logger.info(f"  [Step 2a] 캐시된 Kling 프롬프트 {len(video_prompts)}개 재사용")
+    else:
+        logger.info("  [Step 2a] VideoPrompter: Kling 전용 영상 프롬프트 생성...")
+        try:
+            from app.agents.media.video_prompter import generate_video_prompts
+            video_prompts = await generate_video_prompts(
+                topic=topic,
+                hook=slide_texts[0] if slide_texts else topic,
+                body_slides=slide_texts,
+                video_plan_dict=video_plan_dict,
+                platform=platform,
+            )
+            logger.info(f"  [VideoPrompter] {len(video_prompts)}개 Kling 프롬프트 생성 완료")
+            logger.info(f"  [VideoPrompter] 샘플: {video_prompts[0][:80]}..." if video_prompts else "")
+        except Exception as e:
+            logger.warning(f"  [VideoPrompter] 실패, image_prompts 사용: {e}")
+            video_prompts = image_prompts  # fallback
+
+    # Step 2b: 씬 이미지 → Kling 클립 (순차 — 병렬 시 API rate limit)
     generated_clips = []
-    for i, (text, prompt) in enumerate(zip(slide_texts, image_prompts)):
+    for i, (text, v_prompt) in enumerate(zip(slide_texts, video_prompts)):
         clip_path = CLIPS_DIR / f"{slug}_{platform}_{i:02d}.mp4"
-
-        # 이미 생성된 클립 재사용
-        if clip_path.exists() and clip_path.stat().st_size > 0:
-            logger.info(f"  [Veo] 클립 {i+1} 재사용: {clip_path.name}")
-            generated_clips.append(clip_path)
-            continue
 
         # 해당 슬라이드의 씬 이미지 찾기
         image_path = None
@@ -288,52 +561,57 @@ async def produce_video(
                 image_path = p
 
         if not image_path:
-            logger.warning(f"  [Veo] 씬 이미지 없음 ({i+1}번) — 스킵")
+            logger.warning(f"  [Kling] 씬 이미지 없음 ({i+1}번) — 스킵")
             generated_clips.append(None)
             continue
 
-        result = await generate_veo_clip(
+        # image_tail: 다음 슬라이드 이미지 → 자연스러운 장면 전환 보간
+        end_image_path = None
+        if i + 1 < len(scene_image_paths) and scene_image_paths[i + 1]:
+            next_p = Path(scene_image_paths[i + 1])
+            if next_p.exists():
+                end_image_path = next_p
+
+        clip_result = await generate_kling_clip(
             image_path=image_path,
-            image_prompt=prompt,
+            image_prompt=v_prompt,
             slide_text=text,
             output_path=clip_path,
             aspect_ratio=aspect_ratio,
+            end_image_path=end_image_path,
         )
-        generated_clips.append(result)
 
-    logger.info(f"  [Step 1] Veo 클립 완료: {sum(1 for c in generated_clips if c)}개")
+        # Kling 실패 시 Ken Burns 시퀀스 fallback
+        if clip_result is None:
+            audio_path = audio_paths[i] if i < len(audio_paths) else None
+            audio_dur = _get_video_duration(audio_path) if audio_path and audio_path.exists() else 5.0
+            logger.info(f"  → Ken Burns fallback: 슬라이드 {i+1} ({audio_dur:.0f}초 커버)")
+            clip_result = await generate_kenburns_sequence(
+                image_path=image_path,
+                output_path=clip_path,
+                audio_duration=audio_dur,
+                aspect_ratio=aspect_ratio,
+                start_effect_index=i,
+            )
 
-    # Step 2: TTS 나레이션
-    audio_paths: list[Path | None] = [None] * len(slide_texts)
-    if tts_provider == "gemini":
-        logger.info(f"  [Step 2] Gemini TTS {len(slide_texts)}개 생성...")
-        from app.agents.media.tts_gemini import generate_narrations_gemini
-        audio_paths = await generate_narrations_gemini(
-            slide_texts=slide_texts,
-            slug=slug,
-            platform=platform,
-        )
-    elif tts_provider == "elevenlabs" or with_tts:
-        logger.info(f"  [Step 2] ElevenLabs TTS {len(slide_texts)}개 생성...")
-        tts_tasks = []
-        for i, text in enumerate(slide_texts):
-            path = AUDIO_DIR / f"{slug}_{platform}_{i:02d}.mp3"
-            tts_tasks.append(generate_tts(text, path, voice_id=tts_voice_id))
-        audio_paths = list(await asyncio.gather(*tts_tasks))
+        generated_clips.append(clip_result)
 
-    # Step 3: moviepy 조립
+        # Kling rate limit 방지: 클립 간 5초 대기
+        if i < len(slide_texts) - 1:
+            await asyncio.sleep(5)
+
+    logger.info(f"  [Step 2] 클립 완료: {sum(1 for c in generated_clips if c)}개")
+
+    # Step 3: 영상 조립
     logger.info("  [Step 3] 영상 조립...")
     full_path = OUTPUT_DIR / f"{slug}_{platform}_full.mp4"
-    shorts_path = OUTPUT_DIR / f"{slug}_{platform}_shorts.mp4"
 
-    # moviepy는 CPU 집약적 동기 함수 → thread pool에서 실행
+    # 롱폼 영상만 생성 — 쇼츠는 별도 단계(ShortsExtractor)로 분리
     result = await asyncio.to_thread(
         assemble_video,
         clip_paths=[c for c in generated_clips if c],
         audio_paths=audio_paths,
-        slide_texts=slide_texts,
         output_path=full_path,
-        shorts_path=shorts_path,
     )
 
     result["clip_paths"] = [str(p) for p in generated_clips if p]

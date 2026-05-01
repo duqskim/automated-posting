@@ -72,18 +72,19 @@ async def generate_image_prompts(
         char_name = character.get("name", "")
         char_visual = character.get("visual_description", "")
         char_base_prompt = character.get("base_image_prompt", "")
-        char_ref = character.get("reference_image_url", "")
         bible = character.get("bible") or {}
         char_appearance = bible.get("visual_description") or char_visual
         if char_base_prompt or char_appearance:
             character_note = f"""
-CHARACTER TO FEATURE: {char_name}
+HOST CHARACTER: {char_name}
 Visual appearance: {char_appearance}
 Base image style: {char_base_prompt}
 
-For EACH slide, show {char_name} as the narrator/presenter in the scene.
-The character should appear consistently across all slides.
-Integrate the character naturally into each scene (e.g., pointing at data, standing in front of relevant background, gesturing while explaining).
+CHARACTER APPEARANCE RULES (very important):
+- Slides 1 and last slide: show {char_name} as the on-screen host in the scene
+- All other slides: focus on IMMERSIVE HISTORICAL SCENES without the character
+- Historical content slides must feel like National Geographic or BBC documentary cinematography
+- Do NOT force the character into every slide — the historical scene itself should be the star
 """
 
     prompt = f"""You are a professional visual director specializing in AI image generation (Imagen 4).
@@ -101,16 +102,24 @@ Rules:
 - Output in JSON: {{"prompts": ["prompt for slide 1", "prompt for slide 2", ...]}}
 - ALWAYS write prompts in ENGLISH regardless of slide language
 - 60-100 words per prompt
-- Structure each prompt: [specific subject/scene with concrete details] + [visual style] + [camera angle/composition] + [lighting/atmosphere]
+- Structure each prompt: [specific subject/scene with concrete details] + [Korean/East Asian setting] + [camera angle/composition] + [lighting/atmosphere] + [style]
 - Extract specific nouns from the slide: exact years, names, places, objects, numbers
 - Minimize human faces/people (use hands, silhouettes, objects, environments instead) to avoid safety filters
 - Match the emotional tone of each slide
-- For historical content: use dramatic cinematic photography, museum-quality lighting
-- For data/statistics: use abstract visualization, charts as physical objects in 3D space
-- For comparison: split-frame compositions, contrasting lighting
-- For modern/tech content: clean minimalist, neon accents, high-tech environments
-- No text, watermarks, or logos in the scene description
-- End each prompt with: "photorealistic, 8K, professional photography"
+
+MANDATORY KOREAN/EAST ASIAN AESTHETIC (apply to EVERY prompt without exception):
+- Architecture: Korean palace (경복궁-style), hanok rooftops, stone walls with curved eaves, wooden pillars, hanji paper screens
+- Clothing/objects: Hanbok fabric, joseon-era armor, bronze vessels, celadon pottery, ink brushes, royal seals
+- Landscape: Korean mountain ranges, pine forests, rice paddies, stone-paved roads, Han River
+- People (when needed): East Asian facial features, Korean historical dress
+- NEVER generate European castles, Western armor, Roman columns, or any non-East-Asian architecture
+
+MANDATORY STYLE (apply to EVERY prompt, always append at the end):
+"cinematic photorealistic, Korean historical drama aesthetic, warm amber and golden hour color palette, volumetric light rays, Netflix historical drama cinematography, 8K, professional photography"
+
+- For historical scenes: dramatic wide-angle establishing shots, ancient artifacts close-up, royal court interiors with volumetric light — make the viewer feel they are THERE (National Geographic / BBC + Netflix Joseon style)
+- For data/statistics: use East Asian symbolic objects (abacus, jade tablets, scroll maps) as physical metaphors
+- No text, watermarks, or logos in the scene
 
 Return ONLY the JSON object, no explanation."""
 
