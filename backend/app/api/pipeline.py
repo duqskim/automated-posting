@@ -426,9 +426,16 @@ async def run_stage_render(
     if render_result.get("thumbnail_spec"):
         sr["thumbnail_spec"] = render_result["thumbnail_spec"]
     if render_result.get("image_prompts"):
-        sr["scene_image_prompts"] = render_result["image_prompts"]  # Imagen용 (이미지 생성)
+        sr["scene_image_prompts"] = render_result["image_prompts"]
     if render_result.get("video_prompts"):
-        sr["video_prompts"] = render_result["video_prompts"]  # Kling용 (영상 생성)
+        sr["video_prompts"] = render_result["video_prompts"]
+    # 신규 멀티샷 파이프라인 데이터
+    if render_result.get("shot_script"):
+        sr["shot_script"] = render_result["shot_script"]
+    if render_result.get("frame_image_paths"):
+        sr["frame_image_paths"] = render_result["frame_image_paths"]
+    if render_result.get("frame_motion_prompts"):
+        sr["frame_motion_prompts"] = render_result["frame_motion_prompts"]
     project.stage_results = sr
     project.status = "passed"
     await db.commit()
@@ -553,6 +560,9 @@ async def run_stage_video(
             video_plan_dict=sr.get("video_plan"),
             bgm_category=body.bgm_category,
             video_prompts=sr.get("video_prompts"),
+            shot_script_dict=sr.get("shot_script"),
+            frame_image_paths=sr.get("frame_image_paths"),
+            frame_motion_prompts=sr.get("frame_motion_prompts"),
         )
         logger.info(f"[API] 영상 제작 Celery 태스크 시작: task_id={task.id}")
 
@@ -584,6 +594,9 @@ async def run_stage_video(
                 video_plan_dict=sr.get("video_plan"),
                 bgm_category=body.bgm_category,
                 video_prompts=sr.get("video_prompts"),
+                shot_script_dict=sr.get("shot_script"),
+                frame_image_paths=sr.get("frame_image_paths"),
+                frame_motion_prompts=sr.get("frame_motion_prompts"),
             )
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"영상 제작 실패: {e}")

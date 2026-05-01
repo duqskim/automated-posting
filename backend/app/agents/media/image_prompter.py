@@ -1,19 +1,11 @@
 """
-ImagePrompter — 슬라이드 텍스트 → Imagen 4 최적화 프롬프트 전문 생성
+ImagePrompter — 슬라이드/ShotFrame → Imagen 4 최적화 프롬프트 생성
 
-역할:
-  카피라이터가 작성한 슬라이드 본문을 받아서,
-  Imagen 4에 최적화된 씬 프롬프트를 별도로 생성.
-
-  카피라이터는 글쓰기 전문가 → 이미지 방향은 러프하게만 제안
-  이 에이전트는 시각화 전문가 → Imagen이 실제로 잘 생성하는 형태로 변환
-
-특징:
-  - 항상 영어로 출력 (Imagen은 영어 프롬프트 성능이 압도적)
-  - 슬라이드당 60-100단어 목표
-  - 인물 묘사 최소화 (안전 필터 우회)
-  - 구체적 오브젝트, 질감, 조명, 구도 명시
-  - 모델: Gemini 2.5 Flash (빠르고 저렴)
+두 가지 모드:
+  1. generate_image_prompts(): 슬라이드 단위 (1 프롬프트/슬라이드) — 기존 방식
+  2. generate_multiframe_prompts(): ShotFrame 단위 (1 프롬프트/샷) — 신규 방식
+     - ShotFrame의 shot_size, camera_start, composition_hint 반영
+     - StyleGuide의 art_style_token + character_descriptions prefix 적용
 """
 import os
 import json
@@ -159,4 +151,128 @@ Return ONLY the JSON object, no explanation."""
             fallback = (rough_prompts[i] if rough_prompts and i < len(rough_prompts) else "") or \
                        f"Cinematic scene: {slide[:80]}. Photorealistic, 8K"
             result.append(fallback)
+        return result
+
+
+async def generate_multiframe_prompts(
+    topic: str,
+    shot_script,        # ShotScript (imported lazily to avoid circular deps)
+    style_guide,        # StyleGuide
+    body_slides: list[str],
+    character: dict | None = None,
+) -> list[str]:
+    """
+    ShotFrame 단위 Imagen 프롬프트 생성 (신규 멀티샷 파이프라인용)
+
+    shot_script.shots 순서와 동일한 프롬프트 목록 반환.
+    StyleGuide.mandatory_prefix/suffix를 모든 프롬프트에 적용.
+    ShotFrame.shot_size + camera_start + composition_hint → 구도/앵글 반영.
+    """
+    from google import genai
+    from google.genai import types
+
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        raise ValueError("GEMINI_API_KEY 없음")
+
+    client = genai.Client(api_key=api_key)
+    shots = shot_script.shots
+
+    # StyleGuide prefix / suffix
+    style_prefix = style_guide.mandatory_prefix or ""
+    style_suffix = style_guide.mandatory_suffix or (
+        "cinematic photorealistic, Korean historical drama aesthetic, "
+        "warm amber color palette, volumetric light rays, 8K, no text overlay"
+    )
+    art_token = style_guide.art_style_token or "Korean historical drama"
+
+    # 캐릭터 일관성 지침
+    char_note = ""
+    if style_guide.character_descriptions:
+        descs = "; ".join(f"{k}: {v}" for k, v in style_guide.character_descriptions.items())
+        char_note = f"\nCHARACTER CONSISTENCY (always match exactly): {descs}"
+
+    shots_info = "\n".join(
+        f"[Shot {idx+1}] Slide {s.slide_index+1}, Frame {s.frame_index+1}\n"
+        f"  Type:{s.shot_type} | Size:{s.shot_size} | Composition:{s.composition_hint}\n"
+        f"  Camera angle: {s.camera_start}\n"
+        f"  Subject action hint: {s.subject_action[:80]}\n"
+        f"  Slide text: {body_slides[s.slide_index][:150] if s.slide_index < len(body_slides) else ''}"
+        for idx, s in enumerate(shots)
+    )
+
+    prompt = f"""You are a professional visual director generating Imagen 4 image prompts.
+
+Topic: "{topic}"
+Art style: {art_token}
+World: {style_guide.world_description}
+Color palette: {style_guide.color_description}
+{char_note}
+
+Shot list to visualize:
+{shots_info}
+
+For each shot, write one Imagen 4 IMAGE GENERATION prompt (static image, NOT video).
+
+Rules:
+- Output JSON: {{"prompts": ["prompt for shot 1", "prompt for shot 2", ...]}}
+- ALWAYS write in ENGLISH
+- 60-100 words per prompt
+- Structure: [camera angle + shot size] + [specific subject/setting] + [composition] + [lighting/atmosphere] + [style]
+- shot_size to camera angle mapping:
+    extreme_wide → aerial or panoramic establishing view
+    wide → full scene with architecture/landscape prominent
+    medium → subject visible with environment context
+    close_up → subject fills frame, environment blurred
+    extreme_close_up → detail shot, single object/face feature
+- Use ShotFrame's camera_start for the angle ("low angle", "aerial", "eye level", etc.)
+- Extract concrete details from slide text: dates, names, places, objects
+- Minimize faces/people — use hands, silhouettes, objects, environments
+- Match shot_type to visual density:
+    DYNAMIC → action-ready composition, subject positioned to move
+    ATMOSPHERIC → wide, open, peaceful, environmental
+    STATIC_GRAPHIC → clean flat surface with the graphic/map/diagram prominent
+
+MANDATORY STYLE (append to EVERY prompt):
+"{style_suffix}"
+
+Return ONLY the JSON object."""
+
+    try:
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt,
+            config=types.GenerateContentConfig(temperature=0.7),
+        )
+
+        text = response.text.strip()
+        text = re.sub(r"```(?:json)?\s*", "", text).strip("` \n")
+        match = re.search(r'\{.*\}', text, re.DOTALL)
+        if not match:
+            raise ValueError(f"JSON not found: {text[:200]}")
+
+        data = json.loads(match.group())
+        prompts = data.get("prompts", [])
+
+        # 수 맞추기
+        while len(prompts) < len(shots):
+            i = len(prompts)
+            shot = shots[i]
+            slide_text = body_slides[shot.slide_index][:100] if shot.slide_index < len(body_slides) else topic
+            prompts.append(
+                f"{style_prefix} {shot.camera_start} view. "
+                f"Cinematic scene: {slide_text}. {style_suffix}"
+            )
+
+        logger.info(f"[ImagePrompter] multiframe {len(prompts)}개 프롬프트 생성 완료")
+        return prompts[:len(shots)]
+
+    except Exception as e:
+        logger.error(f"[ImagePrompter] multiframe 실패: {e}")
+        result = []
+        for shot in shots:
+            slide_text = body_slides[shot.slide_index][:100] if shot.slide_index < len(body_slides) else topic
+            result.append(
+                f"{shot.camera_start} angle. Cinematic scene: {slide_text}. {style_suffix}"
+            )
         return result

@@ -463,6 +463,156 @@ def assemble_video(
     return result
 
 
+# ─── 신규: ShotFrame 멀티샷 파이프라인 ──────────────────────────
+
+async def _produce_video_multiframe(
+    topic: str,
+    platform: str,
+    slide_texts: list[str],
+    shot_script_dict: dict,
+    frame_image_paths: dict,   # (slide_idx, frame_idx) or str keys → path
+    frame_motion_prompts: list[str],
+    aspect_ratio: str,
+    tts_provider: str,
+    tts_voice_id: str,
+    with_tts: bool,
+    bgm_category: str,
+    slug: str,
+) -> dict:
+    """ShotFrame 기반 멀티샷 영상 생성
+
+    흐름:
+      1. TTS 생성 (슬라이드별)
+      2. 샷별 클립 생성 (VideoGenerator)
+      3. 슬라이드별 클립 concat → 슬라이드 영상
+      4. 슬라이드 영상 + TTS 믹싱
+      5. 전체 슬라이드 concat → 풀 영상
+    """
+    from app.agents.media.cinematic_shot_planner import ShotScript
+    from app.agents.media.video_generator import generate_all_shot_clips
+
+    shot_script = ShotScript.from_dict(shot_script_dict)
+    n_slides = len(slide_texts)
+
+    logger.info(
+        f"  [MultiFrame] {shot_script.total_shots}개 샷으로 {n_slides}슬라이드 생성 시작"
+    )
+
+    # ── Step 1: TTS ────────────────────────────────────────────
+    audio_paths: list[Path | None] = [None] * n_slides
+    if tts_provider == "gemini":
+        from app.agents.media.tts_gemini import generate_narrations_gemini
+        logger.info(f"  [MultiFrame] Gemini TTS {n_slides}개 생성...")
+        audio_paths = await generate_narrations_gemini(
+            slide_texts=slide_texts, slug=slug, platform=platform,
+        )
+    elif tts_provider == "elevenlabs" or with_tts:
+        logger.info(f"  [MultiFrame] ElevenLabs TTS {n_slides}개 생성...")
+        tts_tasks = [
+            generate_tts(text, AUDIO_DIR / f"{slug}_{platform}_{i:02d}.mp3", voice_id=tts_voice_id)
+            for i, text in enumerate(slide_texts)
+        ]
+        audio_paths = list(await asyncio.gather(*tts_tasks))
+
+    # ── Step 2: 샷별 클립 생성 ──────────────────────────────────
+    logger.info(f"  [MultiFrame] 샷 클립 생성 시작...")
+
+    # frame_image_paths key 정규화: str → tuple
+    normalized_paths: dict = {}
+    for k, v in frame_image_paths.items():
+        if isinstance(k, str) and "_" in str(k):
+            parts = str(k).split("_")
+            if len(parts) == 2 and all(p.isdigit() for p in parts):
+                normalized_paths[(int(parts[0]), int(parts[1]))] = v
+                continue
+        if isinstance(k, (list, tuple)) and len(k) == 2:
+            normalized_paths[(int(k[0]), int(k[1]))] = v
+            continue
+        normalized_paths[k] = v
+
+    shot_clips = await generate_all_shot_clips(
+        shot_script=shot_script,
+        frame_image_paths=normalized_paths,
+        motion_prompts=frame_motion_prompts,
+        clips_dir=CLIPS_DIR,
+        slug=slug,
+        aspect_ratio=aspect_ratio,
+    )
+
+    # ── Step 3+4: 슬라이드별 클립 concat + TTS 믹싱 ──────────────
+    logger.info(f"  [MultiFrame] 슬라이드별 조립 시작...")
+    slide_merged: list[Path] = []
+    tmp_dir = OUTPUT_DIR / f"_mf_{slug}"
+    tmp_dir.mkdir(exist_ok=True)
+
+    try:
+        for si in range(n_slides):
+            slide_shots = shot_script.shots_for_slide(si)
+            slide_clip_paths = []
+            for shot in slide_shots:
+                clip = shot_clips.get((shot.slide_index, shot.frame_index))
+                if clip and clip.exists():
+                    slide_clip_paths.append(clip)
+
+            if not slide_clip_paths:
+                logger.warning(f"  [MultiFrame] 슬라이드 {si+1} 클립 없음 — 스킵")
+                continue
+
+            # 슬라이드 내 클립 concat
+            slide_video = tmp_dir / f"slide_{si:02d}_concat.mp4"
+            _ffmpeg_concat(slide_clip_paths, slide_video, transition_duration=0.3)
+            if not slide_video.exists():
+                continue
+
+            # TTS 믹싱
+            audio_path = audio_paths[si] if si < len(audio_paths) else None
+            merged = tmp_dir / f"slide_{si:02d}_merged.mp4"
+            try:
+                _mix_audio_into_clip(slide_video, audio_path, merged)
+                slide_merged.append(merged)
+            except Exception as e:
+                logger.error(f"  [MultiFrame] 슬라이드 {si+1} 오디오 삽입 실패: {e}")
+                slide_merged.append(slide_video)
+
+        if not slide_merged:
+            return {"error": "조립할 슬라이드 없음"}
+
+        # ── Step 5: 전체 concat ─────────────────────────────────
+        full_path = OUTPUT_DIR / f"{slug}_{platform}_full.mp4"
+        duration = _ffmpeg_concat(slide_merged, full_path, transition_duration=0.5)
+        logger.info(f"  [MultiFrame] 풀 영상 완료: {full_path.name} ({duration:.1f}초)")
+
+        result = {
+            "full_video": str(full_path),
+            "duration": round(duration, 1),
+            "clips_count": sum(1 for c in shot_clips.values() if c),
+        }
+
+    finally:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+
+    # BGM 믹싱
+    if bgm_category != "none" and result.get("full_video"):
+        try:
+            from app.agents.media.bgm_manager import select_bgm, mix_bgm_into_video
+            bgm_path = await asyncio.to_thread(
+                select_bgm, bgm_category, result.get("duration", 60.0), slug
+            )
+            if bgm_path:
+                bgm_output = OUTPUT_DIR / f"{slug}_{platform}_bgm.mp4"
+                mixed = await asyncio.to_thread(
+                    mix_bgm_into_video, Path(result["full_video"]), bgm_path, bgm_output
+                )
+                if mixed:
+                    result["full_video"] = str(mixed)
+                    result["bgm_category"] = bgm_category
+        except Exception as e:
+            logger.warning(f"  [MultiFrame] BGM 실패 (무시): {e}")
+
+    logger.info(f"=== VideoProduction (MultiFrame) 완료: {result.get('full_video', 'FAILED')} ===")
+    return result
+
+
 # ─── 통합 실행 ───────────────────────────────────────────────
 
 async def produce_video(
@@ -476,8 +626,11 @@ async def produce_video(
     with_tts: bool = False,
     tts_provider: str = "none",   # "none" | "gemini" | "elevenlabs"
     bgm_category: str = "none",   # "none" | "cinematic" | "ambient" | "upbeat" | "dramatic"
-    video_plan_dict: dict | None = None,  # VideoPlannerAgent 결과
+    video_plan_dict: dict | None = None,  # VideoPlannerAgent 결과 (구버전 호환)
     video_prompts: list[str] | None = None,  # 렌더 단계에서 캐시된 Kling 전용 프롬프트
+    shot_script_dict: dict | None = None,    # CinematicShotPlanner 결과 (신버전)
+    frame_image_paths: dict | None = None,   # (slide_idx, frame_idx) → path (신버전)
+    frame_motion_prompts: list[str] | None = None,  # 샷별 모션 프롬프트 (신버전)
 ) -> dict:
     """
     Step 4 씬 이미지 → Veo 클립 → moviepy 조립 → 영상
@@ -497,6 +650,24 @@ async def produce_video(
 
     logger.info(f"=== VideoProduction: '{topic}' [{platform}] {len(slide_texts)}슬라이드 (Kling AI) ===")
 
+    # ── 신규: ShotFrame 기반 파이프라인 ─────────────────────────
+    if shot_script_dict and frame_image_paths:
+        return await _produce_video_multiframe(
+            topic=topic,
+            platform=platform,
+            slide_texts=slide_texts,
+            shot_script_dict=shot_script_dict,
+            frame_image_paths=frame_image_paths,
+            frame_motion_prompts=frame_motion_prompts or [],
+            aspect_ratio=aspect_ratio,
+            tts_provider=tts_provider,
+            tts_voice_id=tts_voice_id,
+            with_tts=with_tts,
+            bgm_category=bgm_category,
+            slug=slug,
+        )
+
+    # ── 구버전 호환: 슬라이드당 1 클립 ───────────────────────────
     # video_plan에서 샷 스펙 로드
     shot_map: dict = {}
     if video_plan_dict and video_plan_dict.get("shots"):

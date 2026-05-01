@@ -65,6 +65,9 @@ def _run_video_sync(
     video_plan_dict: dict | None = None,
     bgm_category: str = "none",
     video_prompts: list | None = None,
+    shot_script_dict: dict | None = None,
+    frame_image_paths: dict | None = None,
+    frame_motion_prompts: list | None = None,
 ) -> dict:
     controller = PipelineController(market)
     return asyncio.run(controller.run_video(
@@ -77,6 +80,9 @@ def _run_video_sync(
         video_plan_dict=video_plan_dict,
         bgm_category=bgm_category,
         video_prompts=video_prompts,
+        shot_script_dict=shot_script_dict,
+        frame_image_paths=frame_image_paths,
+        frame_motion_prompts=frame_motion_prompts,
     ))
 
 
@@ -105,6 +111,9 @@ if ASYNC_MODE and celery_app:
         video_plan_dict: dict | None = None,
         bgm_category: str = "none",
         video_prompts: list | None = None,
+        shot_script_dict: dict | None = None,
+        frame_image_paths: dict | None = None,
+        frame_motion_prompts: list | None = None,
     ):
         """Celery 비동기 영상 제작 태스크 — 완료 시 DB에 직접 저장"""
         logger.info(f"[Celery] 영상 제작 시작: project_id={project_id}")
@@ -122,6 +131,9 @@ if ASYNC_MODE and celery_app:
                 video_plan_dict=video_plan_dict,
                 bgm_category=bgm_category,
                 video_prompts=video_prompts,
+                shot_script_dict=shot_script_dict,
+                frame_image_paths=frame_image_paths,
+                frame_motion_prompts=frame_motion_prompts,
             )
             video_data = {
                 "platform": platform,
@@ -164,6 +176,9 @@ else:
         video_plan_dict: dict | None = None,
         bgm_category: str = "none",
         video_prompts: list | None = None,
+        shot_script_dict: dict | None = None,
+        frame_image_paths: dict | None = None,
+        frame_motion_prompts: list | None = None,
     ):
         """동기 폴백 — 서버 블로킹 발생, Redis 설치 권장"""
         logger.warning(f"[Sync] 영상 제작 동기 실행 (블로킹) project_id={project_id}")
@@ -179,6 +194,9 @@ else:
                 video_plan_dict=video_plan_dict,
                 bgm_category=bgm_category,
                 video_prompts=video_prompts,
+                shot_script_dict=shot_script_dict,
+                frame_image_paths=frame_image_paths,
+                frame_motion_prompts=frame_motion_prompts,
             )
             return {
                 "platform": platform,

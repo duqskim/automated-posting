@@ -432,11 +432,12 @@ class PipelineController:
         }
 
     async def _run_render_scene(self, content_dict: dict, topic: str, platform: str, character: dict | None = None, image_provider: str = "auto") -> dict:
-        """영상 플랫폼: VideoPlannerAgent → VideoDirectorAgent → ImagePrompter → Imagen 4"""
-        from app.agents.media.image_generation import generate_all_scenes, SCENES_DIR
-        from app.agents.media.image_prompter import generate_image_prompts
-        from app.agents.media.video_planner import VideoPlannerAgent
-        from app.agents.media.video_director import enhance_prompts_with_direction
+        """영상 플랫폼: CinematicShotPlanner → StyleGuide → MultiFrame 이미지 → PerFramePrompter"""
+        from app.agents.media.image_generation import generate_all_frames, SCENES_DIR
+        from app.agents.media.image_prompter import generate_multiframe_prompts
+        from app.agents.media.cinematic_shot_planner import CinematicShotPlanner
+        from app.agents.media.style_guide_agent import StyleGuideAgent
+        from app.agents.media.per_frame_video_prompter import generate_per_frame_prompts
         from app.agents.media.thumbnail_agent import generate_thumbnail_spec, render_thumbnail, thumbnail_spec_to_dict
         from app.agents.media.metadata_agent import MetadataAgent, metadata_to_dict
 
@@ -450,64 +451,76 @@ class PipelineController:
 
         slug = _make_slug(topic)
 
-        # research에서 thumbnail_style 추출 (없으면 빈 문자열)
         thumbnail_style = content_plan.platform_contents[0].metadata.get(
             "thumbnail_style", ""
         ) if content_plan.platform_contents else ""
 
-        # Step 1: Video Planner — 씬별 샷 리스트 + 페이싱
-        logger.info("  [VideoPlannerAgent] 씬 플래닝 중...")
-        video_plan = None
+        # Step 1: CinematicShotPlanner — 슬라이드 → ShotFrame 분해
+        logger.info("  [CinematicShotPlanner] 샷 플래닝 중...")
+        shot_script = None
         try:
-            planner = VideoPlannerAgent(self.profile)
-            video_plan = await planner.plan(
+            planner = CinematicShotPlanner()
+            shot_script = await planner.plan(
                 topic=topic,
                 hook=target.hook,
                 body_slides=target.body,
                 platform=platform,
             )
+            logger.info(f"  [CinematicShotPlanner] {shot_script.total_shots}개 샷 계획 완료")
         except Exception as e:
-            logger.warning(f"  [VideoPlannerAgent] 실패 (계속): {e}")
+            logger.warning(f"  [CinematicShotPlanner] 실패 (계속): {e}")
 
-        # Step 2: ImagePrompter — Imagen 기본 프롬프트
-        logger.info("  [ImagePrompter] Imagen 전용 프롬프트 생성 중...")
-        base_prompts = await generate_image_prompts(
-            topic=topic,
-            hook=target.hook,
-            body_slides=target.body,
-            rough_prompts=target.image_prompts or [],
-            language=self.profile.language,
-            platform=platform,
-            character=character,
-        )
+        # Step 2: StyleGuideAgent — 전체 비주얼 스타일 가이드
+        logger.info("  [StyleGuideAgent] 스타일 가이드 생성 중...")
+        style_guide = None
+        try:
+            style_agent = StyleGuideAgent()
+            style_guide = await style_agent.generate(
+                topic=topic,
+                hook=target.hook,
+                platform=platform,
+                character=character,
+            )
+        except Exception as e:
+            logger.warning(f"  [StyleGuideAgent] 실패 (기본 스타일 사용): {e}")
+            from app.agents.media.style_guide_agent import _DEFAULT_STYLE
+            style_guide = _DEFAULT_STYLE
 
-        # Step 3: Video Director — 영화적 연출 강화
-        optimized_prompts = base_prompts
-        if video_plan:
-            logger.info("  [VideoDirectorAgent] 연출 강화 중...")
+        # Step 3: ImagePrompter — ShotFrame별 Imagen 프롬프트
+        frame_prompts = []
+        if shot_script and style_guide:
+            logger.info("  [ImagePrompter] multiframe 프롬프트 생성 중...")
             try:
-                optimized_prompts = await enhance_prompts_with_direction(
-                    base_prompts=base_prompts,
-                    video_plan=video_plan,
+                frame_prompts = await generate_multiframe_prompts(
                     topic=topic,
+                    shot_script=shot_script,
+                    style_guide=style_guide,
+                    body_slides=target.body,
+                    character=character,
                 )
             except Exception as e:
-                logger.warning(f"  [VideoDirectorAgent] 실패 (기본 프롬프트 사용): {e}")
+                logger.warning(f"  [ImagePrompter] multiframe 실패 (기본 프롬프트 사용): {e}")
 
-        # Step 4: 씬 이미지 생성 (Imagen 4 / DALL-E 3)
-        image_paths = await generate_all_scenes(
-            slide_texts=target.body,
-            image_prompts=optimized_prompts,
-            topic=topic,
-            platform=platform,
-            language=self.profile.language,
-            slug=slug,
-            image_provider=image_provider,
-        )
-        image_paths = [p for p in image_paths if p]
-        logger.info(f"  씬 이미지 완료: {len(image_paths)}장")
+        # Step 4: 이미지 생성 (ShotFrame별)
+        frame_image_paths: dict = {}
+        image_paths_flat: list[str] = []
+        if shot_script:
+            logger.info(f"  [ImageGeneration] {shot_script.total_shots}개 프레임 이미지 생성 중...")
+            frame_image_paths = await generate_all_frames(
+                shot_script=shot_script,
+                body_slides=target.body,
+                image_prompts=frame_prompts,
+                topic=topic,
+                platform=platform,
+                slug=slug,
+                image_provider=image_provider,
+            )
+            image_paths_flat = [v for v in frame_image_paths.values() if v]
+            logger.info(f"  이미지 완료: {len(image_paths_flat)}장")
+        else:
+            logger.warning("  [ImageGeneration] shot_script 없음 — 이미지 생성 스킵")
 
-        # Step 5: Thumbnail Agent — CTR 최적화 썸네일
+        # Step 5: Thumbnail Agent
         thumbnail_path = None
         thumbnail_spec_dict = None
         try:
@@ -519,20 +532,17 @@ class PipelineController:
                 language=self.profile.language,
             )
             thumbnail_spec_dict = thumbnail_spec_to_dict(thumb_spec)
-
             thumb_output = SCENES_DIR / f"{slug}_thumbnail.jpg"
             result = await render_thumbnail(
-                spec=thumb_spec,
-                output_path=thumb_output,
-                topic=topic,
-                language=self.profile.language,
+                spec=thumb_spec, output_path=thumb_output,
+                topic=topic, language=self.profile.language,
             )
             if result:
                 thumbnail_path = str(result)
         except Exception as e:
             logger.warning(f"  [ThumbnailAgent] 실패 (무시): {e}")
 
-        # Step 6: Metadata Agent — YouTube SEO 메타데이터
+        # Step 6: Metadata Agent
         metadata_dict = None
         try:
             logger.info("  [MetadataAgent] SEO 메타데이터 생성 중...")
@@ -548,51 +558,35 @@ class PipelineController:
         except Exception as e:
             logger.warning(f"  [MetadataAgent] 실패 (무시): {e}")
 
-        # video_plan 직렬화
-        video_plan_dict = None
-        if video_plan:
-            video_plan_dict = {
-                "pacing": video_plan.pacing,
-                "visual_style": video_plan.visual_style,
-                "color_theme": video_plan.color_theme,
-                "total_duration_seconds": video_plan.total_duration_seconds,
-                "shots": [
-                    {
-                        "slide_index": s.slide_index,
-                        "camera_movement": s.camera_movement,
-                        "mood": s.mood,
-                        "duration_seconds": s.duration_seconds,
-                        "transition": s.transition,
-                        "ken_burns": s.ken_burns,
-                    }
-                    for s in video_plan.shots
-                ],
-            }
+        # Step 7: PerFrameVideoPrompter — 샷별 Kling 모션 프롬프트
+        frame_motion_prompts = []
+        if shot_script:
+            try:
+                frame_motion_prompts = await generate_per_frame_prompts(
+                    shot_script=shot_script,
+                    topic=topic,
+                    platform=platform,
+                )
+                logger.info(f"  [PerFrameVideoPrompter] {len(frame_motion_prompts)}개 모션 프롬프트 캐시")
+            except Exception as e:
+                logger.warning(f"  [PerFrameVideoPrompter] 실패 (영상 제작 시 재시도): {e}")
 
-        # Step 7: VideoPrompter — Kling 전용 영상 프롬프트 미리 생성 (렌더 단계에서 캐시)
-        video_prompts_for_kling = None
-        try:
-            from app.agents.media.video_prompter import generate_video_prompts
-            video_prompts_for_kling = await generate_video_prompts(
-                topic=topic,
-                hook=target.hook,
-                body_slides=target.body,
-                video_plan_dict=video_plan_dict,
-                platform=platform,
-            )
-            logger.info(f"  [VideoPrompter] {len(video_prompts_for_kling)}개 Kling 프롬프트 캐시")
-        except Exception as e:
-            logger.warning(f"  [VideoPrompter] 실패 (영상 제작 시 재시도): {e}")
+        # frame_image_paths: JSON 직렬화용 str 키로 변환 (tuple key → "si_fi")
+        frame_image_paths_serializable = {
+            f"{si}_{fi}": path
+            for (si, fi), path in frame_image_paths.items()
+        } if frame_image_paths else {}
 
         return {
-            "image_paths": image_paths,
-            "image_prompts": optimized_prompts,  # Imagen용 (정적 이미지)
-            "video_prompts": video_prompts_for_kling,  # Kling용 (동적 영상)
+            "image_paths": image_paths_flat,
+            "image_prompts": frame_prompts,
+            "shot_script": shot_script.to_dict() if shot_script else None,
+            "frame_image_paths": frame_image_paths_serializable,
+            "frame_motion_prompts": frame_motion_prompts,
             "render_type": "scene",
             "thumbnail_path": thumbnail_path,
             "thumbnail_spec": thumbnail_spec_dict,
             "metadata": metadata_dict,
-            "video_plan": video_plan_dict,
         }
 
     async def _run_render_short_video(self, content_dict: dict, topic: str, platform: str, character: dict | None = None, image_provider: str = "auto") -> dict:
@@ -759,6 +753,9 @@ class PipelineController:
         video_plan_dict: dict | None = None,
         bgm_category: str = "none",
         video_prompts: list[str] | None = None,
+        shot_script_dict: dict | None = None,
+        frame_image_paths: dict | None = None,
+        frame_motion_prompts: list[str] | None = None,
     ) -> dict:
         """Stage 5: 씬 이미지 → Veo 클립 → moviepy 조립 → VideoReviewer → ShortsExtractor"""
         from app.agents.media.video_production import produce_video
@@ -807,6 +804,9 @@ class PipelineController:
             bgm_category=bgm_category,
             video_plan_dict=video_plan_dict,
             video_prompts=video_prompts,
+            shot_script_dict=shot_script_dict,
+            frame_image_paths=frame_image_paths,
+            frame_motion_prompts=frame_motion_prompts,
         )
 
         # Step 2: Video Reviewer — 품질 검수

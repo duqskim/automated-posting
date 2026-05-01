@@ -274,3 +274,62 @@ async def generate_all_scenes(
     logger.info(f"=== ImageGeneration 완료: {success}/{len(tasks)}장 ===")
 
     return [str(r) if r else "" for r in results]
+
+
+async def generate_all_frames(
+    shot_script,           # ShotScript (imported lazily)
+    body_slides: list[str],
+    image_prompts: list[str],   # 1 per ShotFrame (same order as shot_script.shots)
+    topic: str,
+    platform: str = "youtube",
+    slug: str = "",
+    image_provider: str = "auto",
+) -> dict:
+    """
+    ShotFrame 단위 이미지 병렬 생성 (신규 멀티샷 파이프라인용)
+
+    반환: dict with keys (slide_index, frame_index) and str path values
+    파일명: {slug}_{platform}_s{slide:02d}_f{frame:02d}.jpg
+    """
+    import re
+    if not slug:
+        slug = re.sub(r"[^\w]", "_", topic)[:25]
+
+    shots = shot_script.shots
+    aspect_ratio = PLATFORM_ASPECT.get(platform, "16:9")
+    logger.info(
+        f"=== ImageGeneration (multiframe): '{topic}' [{platform}] "
+        f"{len(shots)}프레임 ({aspect_ratio}) ==="
+    )
+
+    tasks = []
+    keys = []
+    for idx, shot in enumerate(shots):
+        si, fi = shot.slide_index, shot.frame_index
+        path = SCENES_DIR / f"{slug}_{platform}_s{si:02d}_f{fi:02d}.jpg"
+        slide_text = body_slides[si] if si < len(body_slides) else ""
+        prompt = image_prompts[idx] if idx < len(image_prompts) else ""
+        keys.append((si, fi))
+        tasks.append(generate_scene_image(
+            slide_text=slide_text,
+            image_prompt=prompt,
+            output_path=path,
+            topic=topic,
+            language="en",
+            aspect_ratio=aspect_ratio,
+            image_provider=image_provider,
+        ))
+
+    results = await asyncio.gather(*tasks)
+
+    frame_paths = {}
+    success = 0
+    for (si, fi), result in zip(keys, results):
+        if result:
+            frame_paths[(si, fi)] = str(result)
+            success += 1
+        else:
+            frame_paths[(si, fi)] = ""
+
+    logger.info(f"=== ImageGeneration (multiframe) 완료: {success}/{len(tasks)}장 ===")
+    return frame_paths
