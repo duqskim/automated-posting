@@ -144,8 +144,32 @@ async def get_stage_state(
 
     render_type = sr.get("images_render_type", "scene")
 
-    # 이미지 프롬프트: 렌더 후 생성된 실제 프롬프트 우선, 없으면 콘텐츠 플랜의 placeholder
-    image_prompts: list[str] = sr.get("scene_image_prompts") or []
+    # 이미지 프롬프트: 렌더 후 실제 프롬프트 우선
+    # scene_image_prompts는 프레임 단위(슬라이드 × N프레임)이므로
+    # shot_script로 슬라이드별 첫 프레임 프롬프트만 추출
+    image_prompts: list[str] = []
+    frame_prompts_all: list[str] = sr.get("scene_image_prompts") or []
+    if frame_prompts_all:
+        shot_script_data = sr.get("shot_script")
+        if shot_script_data and shot_script_data.get("shots"):
+            # 슬라이드별 첫 번째 프레임 프롬프트만 추출
+            seen_slides: set[int] = set()
+            shots = shot_script_data["shots"]
+            for i, shot in enumerate(shots):
+                si = shot.get("slide_index", i)
+                if si not in seen_slides and i < len(frame_prompts_all):
+                    image_prompts.append(frame_prompts_all[i])
+                    seen_slides.add(si)
+        else:
+            # shot_script 없으면 앞에서부터 슬라이드 수만큼
+            content_data = sr.get("content")
+            n_slides = 25  # 기본값
+            if content_data:
+                pcs = content_data.get("platform_contents", [])
+                if pcs:
+                    n_slides = len(pcs[0].get("body", []))
+            frames_per_slide = len(frame_prompts_all) // n_slides if n_slides else 1
+            image_prompts = frame_prompts_all[::frames_per_slide][:n_slides]
     if not image_prompts:
         content_data = sr.get("content")
         if content_data:

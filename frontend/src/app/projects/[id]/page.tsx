@@ -334,7 +334,9 @@ export default function ProjectDetailPage() {
   const startEditSlides = (platform: PlatformContent) => {
     setEditingPlatform(platform.platform);
     setEditedSlides([...platform.body]);
-    setEditedImagePrompts([...(platform.image_prompts || platform.body.map((_, i) => `슬라이드 ${i+1}: 이미지 방향을 입력하세요`))]);
+    // 실제 렌더 프롬프트(stage.image_prompts) 우선, 없으면 content의 placeholder
+    const realPrompts = stage?.image_prompts?.length ? stage.image_prompts : null;
+    setEditedImagePrompts([...(realPrompts || platform.image_prompts || platform.body.map((_, i) => `슬라이드 ${i+1}: 이미지 방향을 입력하세요`))]);
   };
 
   const saveSlides = async () => {
