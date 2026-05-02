@@ -87,14 +87,45 @@ class PublisherAgent:
             logger.error(f"X 발행 실패: {e}")
             return PublishResult(platform="x", success=False, error=str(e))
 
-    async def _publish_instagram(self, content: PlatformContent, dry_run: bool = True) -> PublishResult:
+    async def _publish_instagram(
+        self,
+        content: PlatformContent,
+        dry_run: bool = True,
+        image_paths: list[str] | None = None,
+    ) -> PublishResult:
         """Instagram 캐러셀 발행 (Cloudinary + Meta Graph API)"""
         if dry_run:
-            logger.info(f"[DRY RUN] Instagram 캐러셀: {len(content.body)}장")
+            logger.info(f"[DRY RUN] Instagram 캐러셀: {len(content.body)}장, 이미지: {len(image_paths or [])}장")
             return PublishResult(platform="instagram", success=True, post_id="dry_run")
 
-        # Meta Graph API 구현 필요
-        return PublishResult(platform="instagram", success=False, error="Instagram API 미구현")
+        if not image_paths:
+            return PublishResult(platform="instagram", success=False, error="발행할 이미지 없음 — 씬 이미지를 먼저 생성해주세요")
+
+        try:
+            from app.agents.publisher.instagram_uploader import publish_carousel
+
+            caption_parts = [content.hook]
+            if content.caption:
+                caption_parts.append(content.caption)
+            caption = "\n\n".join(p for p in caption_parts if p)
+
+            result = await asyncio.to_thread(
+                publish_carousel,
+                image_paths=image_paths,
+                caption=caption,
+                hashtags=content.hashtags,
+            )
+
+            return PublishResult(
+                platform="instagram",
+                success=True,
+                post_id=result["post_id"],
+                post_url=result["url"],
+                published_at=datetime.now(timezone.utc).isoformat(),
+            )
+        except Exception as e:
+            logger.error(f"Instagram 발행 실패: {e}")
+            return PublishResult(platform="instagram", success=False, error=str(e))
 
     async def _publish_youtube(
         self,
@@ -218,6 +249,7 @@ class PublisherAgent:
         video_path: str | None = None,
         srt_paths: dict | None = None,
         metadata: dict | None = None,
+        image_paths: list[str] | None = None,
     ) -> PublisherResult:
         """전체 플랫폼 발행
 
@@ -225,6 +257,7 @@ class PublisherAgent:
             video_path: 업로드할 영상 파일 경로 (YouTube용)
             srt_paths: {"en": "/path/en.srt", "ko": "/path/ko.srt"} (YouTube 자막)
             metadata: MetadataAgent 출력 (title, description, tags, chapters)
+            image_paths: 씬 이미지 파일 경로 목록 (Instagram용)
         """
         logger.info(f"=== Publisher: '{content_plan.topic}' 발행 "
                      f"{'[DRY RUN]' if dry_run else '[LIVE]'} ===")
@@ -248,7 +281,7 @@ class PublisherAgent:
             elif content.platform == "x":
                 result = await self._publish_x(content, dry_run=dry_run)
             elif content.platform == "instagram":
-                result = await self._publish_instagram(content, dry_run=dry_run)
+                result = await self._publish_instagram(content, dry_run=dry_run, image_paths=image_paths)
             elif content.platform == "linkedin":
                 result = await self._publish_linkedin(content, dry_run=dry_run)
             elif content.platform == "threads":

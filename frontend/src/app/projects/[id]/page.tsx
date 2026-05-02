@@ -97,7 +97,7 @@ const HOOK_STYLE_LABELS: Record<string, string> = {
   urgency: "⚡ 긴박감",
 };
 
-const STEP_ORDER = ["idle", "research_done", "hooks_done", "write_done", "render_done", "video_processing", "video_done"];
+const STEP_ORDER = ["idle", "research_done", "hooks_done", "write_done", "render_done", "video_processing", "video_done", "publish_done"];
 
 function stepIndex(step: string) {
   return STEP_ORDER.indexOf(step);
@@ -129,6 +129,8 @@ export default function ProjectDetailPage() {
   const [imageProvider, setImageProvider] = useState<"auto" | "imagen" | "gemini-flash" | "gemini-pro" | "gpt-image-1" | "dalle">("gemini-pro");
   const [ttsPlatform, setTtsPlatform] = useState<"none" | "gemini" | "elevenlabs">("gemini");
   const [bgmCategory, setBgmCategory] = useState<"none" | "cinematic" | "ambient" | "upbeat" | "dramatic">("cinematic");
+  const [publishPlatform, setPublishPlatform] = useState("youtube");
+  const [publishResult, setPublishResult] = useState<{ results: { platform: string; success: boolean; post_url?: string; error?: string }[] } | null>(null);
   const [loading, setLoading] = useState<string | null>(null); // 로딩 중인 스텝 이름
   const [error, setError] = useState("");
   const [videoLog, setVideoLog] = useState<{ lines: string[]; step: string } | null>(null);
@@ -426,6 +428,23 @@ export default function ProjectDetailPage() {
       }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "영상 제작 실패");
+    } finally {
+      setLoading(null);
+    }
+  };
+
+  const runPublish = async (dryRun: boolean) => {
+    setLoading(dryRun ? "publish_dry" : "publish_live");
+    setError("");
+    try {
+      const res = await api.pipeline.publish(projectId, publishPlatform, dryRun);
+      setPublishResult(res);
+      if (!dryRun) {
+        setStage(prev => ({ ...prev, current_step: "publish_done" }));
+        await loadProject();
+      }
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "발행 실패");
     } finally {
       setLoading(null);
     }
@@ -1211,6 +1230,67 @@ export default function ProjectDetailPage() {
                 </Button>
               </div>
             )}
+          </StepCard>
+        )}
+
+        {/* ── Step 6: 발행 ─────────────────────────────────────── */}
+        {currentStepIdx >= 3 && (
+          <StepCard
+            step={6}
+            title="발행"
+            icon="🚀"
+            done={stage.current_step === "publish_done"}
+            active={currentStepIdx >= 3}
+          >
+            <div className="space-y-4">
+              <div className="flex items-center gap-3">
+                <label className="text-sm font-medium w-20">플랫폼</label>
+                <select
+                  className="border rounded px-2 py-1 text-sm bg-background"
+                  value={publishPlatform}
+                  onChange={e => setPublishPlatform(e.target.value)}
+                >
+                  <option value="youtube">YouTube</option>
+                  <option value="instagram">Instagram</option>
+                  <option value="x">X (Twitter)</option>
+                </select>
+              </div>
+
+              {publishResult && (
+                <div className="rounded border p-3 space-y-2 text-sm">
+                  {publishResult.results.map((r, i) => (
+                    <div key={i} className={`flex items-center gap-2 ${r.success ? "text-green-600" : "text-red-500"}`}>
+                      <span>{r.success ? "✓" : "✗"}</span>
+                      <span className="font-medium">{r.platform}</span>
+                      {r.post_url && (
+                        <a href={r.post_url} target="_blank" rel="noopener noreferrer" className="underline truncate max-w-[200px]">
+                          {r.post_url}
+                        </a>
+                      )}
+                      {r.error && <span className="text-muted-foreground">{r.error}</span>}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => runPublish(true)}
+                  disabled={!!loading}
+                >
+                  {loading === "publish_dry" ? "확인 중..." : "드라이런 확인"}
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => runPublish(false)}
+                  disabled={!!loading}
+                >
+                  {loading === "publish_live" ? "발행 중..." : "🚀 실제 발행"}
+                </Button>
+              </div>
+            </div>
           </StepCard>
         )}
       </div>

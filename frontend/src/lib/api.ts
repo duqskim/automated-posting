@@ -137,6 +137,13 @@ export const api = {
         method: "POST",
         body: JSON.stringify({ platform, tts_provider: ttsProvider, bgm_category: bgmCategory }),
       }),
+
+    /** Stage 8: 발행 */
+    publish: (projectId: number, platform: string = "youtube", dryRun: boolean = true) =>
+      apiFetch(`/api/pipeline/${projectId}/stage/publish`, {
+        method: "POST",
+        body: JSON.stringify({ platform, dry_run: dryRun }),
+      }),
   },
   accounts: {
     list: (market?: string) =>

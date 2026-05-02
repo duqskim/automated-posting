@@ -808,7 +808,7 @@ async def run_stage_publish(
         raise HTTPException(status_code=400, detail="글쓰기를 먼저 실행해주세요")
 
     video_data = sr.get("video", {})
-    if not video_data.get("full_video") and not body.dry_run:
+    if not video_data.get("full_video") and not body.dry_run and body.platform in ("youtube", "youtube_shorts"):
         raise HTTPException(status_code=400, detail="영상 제작을 먼저 실행해주세요")
 
     # 콘텐츠 플랜 재구성
@@ -851,6 +851,8 @@ async def run_stage_publish(
     profile = load_market_profile(project.market)
     publisher = PublisherAgent(profile, sns_credentials)
 
+    image_paths = sr.get("images", []) or sr.get("frame_image_paths", [])
+
     try:
         result = await publisher.publish(
             content_plan=content_plan,
@@ -858,6 +860,7 @@ async def run_stage_publish(
             video_path=video_data.get("full_video"),
             srt_paths=video_data.get("srt_paths"),
             metadata=sr.get("metadata"),
+            image_paths=image_paths or None,
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"발행 실패: {e}")
