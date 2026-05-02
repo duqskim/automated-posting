@@ -123,7 +123,7 @@ interface StageRunConfig {
 const STAGE_RUN_CONFIGS: Record<string, StageRunConfig> = {
   audience: {
     label: "오디언스 리서치",
-    model: "Gemini 2.5 Flash",
+    model: "Gemini 2.5 Pro",
     modelColor: "text-blue-500",
     estimatedSecs: 30,
     messages: [
@@ -136,8 +136,8 @@ const STAGE_RUN_CONFIGS: Record<string, StageRunConfig> = {
   },
   archetype: {
     label: "아키타입 분석",
-    model: "Claude Opus 4.5",
-    modelColor: "text-purple-500",
+    model: "Gemini 2.5 Pro",
+    modelColor: "text-blue-500",
     estimatedSecs: 40,
     messages: [
       "오디언스 분석 결과를 검토하는 중...",
@@ -149,8 +149,8 @@ const STAGE_RUN_CONFIGS: Record<string, StageRunConfig> = {
   },
   archetype_select: {
     label: "컨셉 생성",
-    model: "Claude Opus 4.5",
-    modelColor: "text-purple-500",
+    model: "Gemini 2.5 Pro",
+    modelColor: "text-blue-500",
     estimatedSecs: 55,
     messages: [
       "선택된 아키타입을 기반으로 구상하는 중...",
@@ -162,8 +162,8 @@ const STAGE_RUN_CONFIGS: Record<string, StageRunConfig> = {
   },
   concept_select: {
     label: "바이블 작성",
-    model: "Claude Opus 4.5",
-    modelColor: "text-purple-500",
+    model: "Gemini 2.5 Pro",
+    modelColor: "text-blue-500",
     estimatedSecs: 70,
     messages: [
       "전체 리서치와 선택 내용을 통합하는 중...",
@@ -177,8 +177,8 @@ const STAGE_RUN_CONFIGS: Record<string, StageRunConfig> = {
   },
   image_select: {
     label: "바이블 작성",
-    model: "Claude Opus 4.5",
-    modelColor: "text-purple-500",
+    model: "Gemini 2.5 Pro",
+    modelColor: "text-blue-500",
     estimatedSecs: 70,
     messages: [
       "선택된 이미지를 분석하는 중...",
@@ -203,8 +203,8 @@ const STAGE_RUN_CONFIGS: Record<string, StageRunConfig> = {
   },
   bible: {
     label: "바이블 작성",
-    model: "Claude Opus 4.5",
-    modelColor: "text-purple-500",
+    model: "Gemini 2.5 Pro",
+    modelColor: "text-blue-500",
     estimatedSecs: 70,
     messages: [
       "전체 리서치와 선택 내용을 통합하는 중...",
@@ -511,7 +511,7 @@ export default function CharacterDesignPage() {
                   각 아키타입의 적합도 점수, 실존 채널 예시, 위험 요소를 함께 제공합니다.
                 </p>
                 <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/30 p-2 rounded-lg">
-                  <span className="text-orange-500 font-medium">Claude Sonnet 4.6</span>
+                  <span className="text-blue-500 font-medium">Gemini 2.5 Pro</span>
                   <span>·</span>
                   <span>약 35~50초 소요</span>
                 </div>
@@ -567,7 +567,18 @@ export default function CharacterDesignPage() {
           <div className="space-y-4">
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">Step 3 — 캐릭터 컨셉 선택</CardTitle>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-base">Step 3 — 캐릭터 컨셉 선택</CardTitle>
+                  <button
+                    className="text-xs text-muted-foreground hover:text-foreground underline"
+                    onClick={() => run("concept_select", async () => {
+                      await api.series.characters.design.resetStage(seriesId, charId, "archetype_select");
+                      await load();
+                    })}
+                  >
+                    ← 아키타입 다시 선택
+                  </button>
+                </div>
               </CardHeader>
               <CardContent>
                 <p className="text-sm text-muted-foreground">{session.concepts.design_note}</p>
@@ -589,7 +600,18 @@ export default function CharacterDesignPage() {
         {stage === "visual" && !running && (
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Step 4 — 비주얼 확정</CardTitle>
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-base">Step 4 — 비주얼 확정</CardTitle>
+                <button
+                  className="text-xs text-muted-foreground hover:text-foreground underline"
+                  onClick={() => run("visual", async () => {
+                    await api.series.characters.design.resetStage(seriesId, charId, "concept_select");
+                    await load();
+                  })}
+                >
+                  ← 컨셉 다시 선택
+                </button>
+              </div>
             </CardHeader>
             <CardContent className="space-y-5">
               {/* 이미지 프롬프트 표시 */}
@@ -687,7 +709,18 @@ export default function CharacterDesignPage() {
           <div className="space-y-4">
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">Step 4 — 대표 이미지 선택</CardTitle>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-base">Step 4 — 대표 이미지 선택</CardTitle>
+                  <button
+                    className="text-xs text-muted-foreground hover:text-foreground underline"
+                    onClick={() => run("image_select", async () => {
+                      await api.series.characters.design.resetStage(seriesId, charId, "visual");
+                      await load();
+                    })}
+                  >
+                    ← 이미지 다시 생성
+                  </button>
+                </div>
               </CardHeader>
               <CardContent>
                 <p className="text-sm text-muted-foreground">

@@ -127,7 +127,7 @@ Respond in JSON:
   "design_note": "Explain the key differentiator between the 3 concepts so the user can make an informed choice"
 }}"""
 
-        result = await self.llm.generate_json(prompt)
+        result = await self.llm.generate_json(prompt, max_tokens=8192)
         if not result:
             logger.error("[ConceptGenerator] LLM 응답 없음")
             return None

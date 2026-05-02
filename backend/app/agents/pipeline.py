@@ -301,17 +301,23 @@ class PipelineController:
             )
             quality = self.quality_gate.evaluate(content)
 
-        # 팩트 체크 (비동기, 실패해도 파이프라인 계속)
+        # 팩트 체크 — 훅 + 본문(데본) 전체 검증
+        # YouTube(가장 긴 본문) 우선, 없으면 첫 번째 플랫폼
         fact_check_result = None
         try:
             from app.agents.writer.fact_checker import FactChecker
             checker = FactChecker()
-            # 첫 번째 플랫폼 본문으로 검증 (대표 콘텐츠)
-            primary = content.platform_contents[0] if content.platform_contents else None
-            if primary:
+            if content.platform_contents:
+                primary = next(
+                    (pc for pc in content.platform_contents if pc.platform == "youtube"),
+                    content.platform_contents[0],
+                )
+                # 훅 텍스트 (모든 플랫폼) + 본문 (primary) 함께 검증
+                hook_texts = [pc.hook for pc in content.platform_contents if pc.hook]
+                check_texts = hook_texts + primary.body
                 fc = await checker.check(
                     topic=content.topic,
-                    body_texts=primary.body,
+                    body_texts=check_texts,
                     language=self.profile.language,
                 )
                 fact_check_result = {
@@ -324,6 +330,11 @@ class PipelineController:
                         for c in fc.claims
                     ],
                 }
+                if fc.disputed_count > 0:
+                    logger.warning(
+                        f"[FactCheck] ⚠️ 오류 {fc.disputed_count}개 발견 — "
+                        f"{[c.claim[:40] for c in fc.claims if c.status == 'disputed']}"
+                    )
         except Exception as e:
             logger.warning(f"팩트 체크 실패 (무시): {e}")
 

@@ -3,12 +3,42 @@ Hooksmith Agent — 훅 생성 전문
 역할: winning formula 기반으로 훅 3~5개 + 썸네일 카피 생성
 원칙: 훅 먼저, 콘텐츠 나중 (MrBeast 방식)
 """
+import re
 from dataclasses import dataclass
 from loguru import logger
 
 from app.llm.factory import get_llm_client
 from app.config.market_profile import MarketProfile
 from app.agents.research.agent import ResearchResult
+
+
+def _extract_stats(text: str) -> list[str]:
+    """훅 텍스트에서 숫자/통계 추출"""
+    patterns = [
+        r'\d+\.?\d*%',   # 87%, 47.3%
+        r'\d+만\s*명',    # 10만 명
+        r'\d+억',         # 100억
+        r'\$[\d,]+',      # $1,000
+        r'\d+ million',   # 5 million
+        r'\d+ billion',   # 2 billion
+    ]
+    results = []
+    for p in patterns:
+        results.extend(re.findall(p, text, re.IGNORECASE))
+    return results
+
+
+def _stat_in_research(stat: str, research: ResearchResult) -> bool:
+    """리서치 데이터에 해당 통계가 존재하는지 확인"""
+    search_corpus = " ".join([
+        " ".join(research.keywords),
+        " ".join(c.title or "" for c in research.top_content),
+        " ".join(c.hook_used or "" for c in research.top_content),
+        " ".join(research.winning_formula.hook_patterns),
+        " ".join(research.winning_formula.content_gaps),
+        str(research.raw_data),
+    ])
+    return stat in search_corpus
 
 
 @dataclass
@@ -99,7 +129,7 @@ JSON format:
   "recommended_hook_index": 0
 }}"""
 
-        result = await self.llm.generate_json(prompt)
+        result = await self.llm.generate_json(prompt, temperature=0.9)
 
         if result:
             hooks = [
@@ -120,6 +150,25 @@ JSON format:
                 )
                 for t in result.get("thumbnail_copies", [])
             ]
+
+            # 훅 팩트 검증: data 스타일 훅의 통계 수치를 리서치 데이터와 대조
+            for hook in hooks:
+                if hook.style == "data":
+                    stats = _extract_stats(hook.text)
+                    if stats:
+                        unverified = [s for s in stats if not _stat_in_research(s, research)]
+                        if unverified:
+                            hook.score = 0.2  # 미검증 통계 → 낮은 점수
+                            logger.warning(
+                                f"[Hooksmith] ⚠️ 미검증 통계 발견 — '{hook.text}' / 수치: {unverified}"
+                                f" → 큐리오시티/반직관 훅 사용 권장"
+                            )
+                        else:
+                            hook.score = 0.9  # 리서치 데이터에서 확인된 수치
+                    else:
+                        hook.score = 0.6  # 숫자 없는 data 훅
+                else:
+                    hook.score = 0.7  # 비-data 스타일 (curiosity, contrarian, urgency, result)
 
             hook_result = HookResult(
                 hooks=hooks,

@@ -264,6 +264,11 @@ export const api = {
           }),
         runBible: (seriesId: number, characterId: number) =>
           apiFetch(`/api/series/${seriesId}/characters/${characterId}/design/bible`, { method: "POST" }),
+        resetStage: (seriesId: number, characterId: number, toStage: string) =>
+          apiFetch(`/api/series/${seriesId}/characters/${characterId}/design/reset`, {
+            method: "POST",
+            body: JSON.stringify({ to_stage: toStage }),
+          }),
       },
     },
   },

@@ -25,6 +25,12 @@ from app.agents.character.audience_researcher import AudienceResearcher, audienc
 from app.agents.character.archetype_advisor import ArchetypeAdvisor, archetype_advice_to_dict
 from app.agents.character.concept_generator import ConceptGenerator, concept_options_to_dict
 from app.agents.character.bible_writer import BibleWriter, bible_to_dict
+from app.agents.publisher.instagram_uploader import upload_to_cloudinary
+
+
+router = APIRouter(tags=["character"])
+chars_router = APIRouter(prefix="/api/characters", tags=["character"])
+series_chars_router = APIRouter(prefix="/api/series/{series_id}/characters", tags=["character"])
 
 
 # ── 전체 캐릭터 라이브러리 (/api/characters) ──────────────────────────────────
@@ -93,11 +99,6 @@ async def assign_character_to_series(
     await db.commit()
     return {"id": char.id, "series_id": char.series_id}
 
-router = APIRouter(tags=["character"])
-chars_router = APIRouter(prefix="/api/characters", tags=["character"])
-
-
-series_chars_router = APIRouter(prefix="/api/series/{series_id}/characters", tags=["character"])
 
 # ── helpers ────────────────────────────────────────────────────────────────
 
@@ -136,6 +137,45 @@ async def _get_series(series_id: int, user: User, db: AsyncSession) -> ContentSe
 
 
 # ── GET session state ───────────────────────────────────────────────────────
+
+@series_chars_router.post("/{character_id}/design/reset")
+async def reset_design_stage(
+    series_id: int,
+    character_id: int,
+    body: dict,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """특정 단계로 되돌리기. to_stage: 돌아갈 단계명"""
+    char = await _get_character(series_id, character_id, user, db)
+    to_stage = body.get("to_stage", "audience")
+
+    # 각 단계별 초기화 범위 정의 (to_stage 이후 데이터 삭제)
+    STAGE_FIELDS = {
+        "audience":        [],
+        "archetype":       ["archetypes", "selected_archetype_index", "concepts", "selected_concept_index", "visual", "image_urls", "selected_image_index"],
+        "archetype_select":["concepts", "selected_concept_index", "visual", "image_urls", "selected_image_index"],
+        "concept_select":  ["selected_concept_index", "visual", "image_urls", "selected_image_index"],
+        "visual":          ["image_urls", "selected_image_index"],
+    }
+
+    session = dict(char.design_session or {})
+    for field in STAGE_FIELDS.get(to_stage, []):
+        session.pop(field, None)
+    session["stage"] = to_stage
+
+    char.design_session = session
+    if to_stage in ("audience", "archetype", "archetype_select", "concept_select", "visual"):
+        char.status = "draft"
+        char.bible = None
+        char.reference_image_url = None
+
+    flag_modified(char, "design_session")
+    db.add(char)
+    await db.commit()
+
+    return {"stage": to_stage}
+
 
 @series_chars_router.get("/{character_id}/design")
 async def get_design_session(
@@ -403,7 +443,7 @@ async def generate_character_images(
     # 출력 디렉토리
     import base64
 
-    char_img_dir = Path(__file__).parents[2] / "output" / "characters"
+    char_img_dir = Path(__file__).parents[2] / "data" / "characters"
     char_img_dir.mkdir(parents=True, exist_ok=True)
 
     slug = re.sub(r"[^\w]", "_", char.name or f"char_{character_id}")[:20]
@@ -438,9 +478,15 @@ async def generate_character_images(
                 import base64
                 raw = base64.b64decode(img_bytes) if isinstance(img_bytes, str) else img_bytes
                 filename = f"{slug}_c{character_id}_{i}.jpg"
-                (char_img_dir / filename).write_bytes(raw)
-                image_urls.append(f"/api/character-images/{filename}")
-                logger.info(f"  이미지 {i+1}/4 생성 완료 ({len(raw)//1024}KB)")
+                local_path = char_img_dir / filename
+                local_path.write_bytes(raw)
+                try:
+                    cloud_url = upload_to_cloudinary(local_path, folder="characters")
+                    image_urls.append(cloud_url)
+                    logger.info(f"  이미지 {i+1}/4 Cloudinary 업로드 완료")
+                except Exception as ce:
+                    logger.warning(f"  Cloudinary 업로드 실패, 로컬 URL 사용: {ce}")
+                    image_urls.append(f"/api/character-images/{filename}")
             else:
                 errors.append(f"이미지 {i+1}: 빈 응답")
                 logger.warning(f"  이미지 {i+1}/4: 이미지 파트 없음")
@@ -468,9 +514,15 @@ async def generate_character_images(
                     img_bytes = response.generated_images[0].image.image_bytes
                     if img_bytes:
                         filename = f"{slug}_c{character_id}_{i}.jpg"
-                        (char_img_dir / filename).write_bytes(img_bytes)
-                        image_urls.append(f"/api/character-images/{filename}")
-                        logger.info(f"  [Fallback] 이미지 {i+1}/4 완료")
+                        local_path = char_img_dir / filename
+                        local_path.write_bytes(img_bytes)
+                        try:
+                            cloud_url = upload_to_cloudinary(local_path, folder="characters")
+                            image_urls.append(cloud_url)
+                            logger.info(f"  [Fallback] 이미지 {i+1}/4 Cloudinary 업로드 완료")
+                        except Exception as ce:
+                            logger.warning(f"  [Fallback] Cloudinary 업로드 실패, 로컬 URL 사용: {ce}")
+                            image_urls.append(f"/api/character-images/{filename}")
             except Exception as e:
                 logger.warning(f"  [Fallback] 이미지 {i+1}/4 실패: {e}")
 

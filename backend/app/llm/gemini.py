@@ -60,9 +60,27 @@ class GeminiClient(BaseLLMClient):
 
         try:
             text = response.text.strip()
+            # 마크다운 코드블록 제거
             if text.startswith("```"):
-                text = text.split("\n", 1)[1].rsplit("```", 1)[0]
+                text = text.split("\n", 1)[1]
+                if "```" in text:
+                    text = text.rsplit("```", 1)[0]
+            text = text.strip()
             return json.loads(text)
         except json.JSONDecodeError:
+            # 응답이 잘린 경우 마지막 완전한 JSON 객체까지만 복구 시도
+            try:
+                text = response.text.strip()
+                if text.startswith("```"):
+                    text = text.split("\n", 1)[1]
+                # 열린 브라켓 수만큼 닫기
+                open_braces = text.count("{") - text.count("}")
+                open_brackets = text.count("[") - text.count("]")
+                if open_braces > 0 or open_brackets > 0:
+                    text = text.rstrip(",\n ")
+                    text += "]" * open_brackets + "}" * open_braces
+                    return json.loads(text)
+            except Exception:
+                pass
             logger.error(f"Gemini JSON 파싱 실패: {response.text[:200]}")
             return None

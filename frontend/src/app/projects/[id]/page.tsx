@@ -22,6 +22,7 @@ interface Project {
 interface HookItem {
   text: string;
   style: string;
+  score: number;
   platform_fit: string[];
 }
 
@@ -642,6 +643,9 @@ export default function ProjectDetailPage() {
                             ))}
                             {i === stage.hooks!.recommended_hook_index && (
                               <span className="text-xs bg-yellow-500/10 text-yellow-600 px-2 py-0.5 rounded">⭐ 추천</span>
+                            )}
+                            {hook.style === "data" && hook.score < 0.5 && (
+                              <span className="text-xs bg-red-500/10 text-red-500 px-2 py-0.5 rounded" title="수치가 리서치 데이터에서 확인되지 않음">⚠️ 미검증 수치</span>
                             )}
                           </div>
                         </div>
