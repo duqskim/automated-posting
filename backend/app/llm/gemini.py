@@ -53,34 +53,36 @@ class GeminiClient(BaseLLMClient):
         temperature: float = 0.3,
         max_tokens: int = 4096,
     ) -> dict | None:
-        json_prompt = f"{prompt}\n\nRespond ONLY with valid JSON. No markdown, no code blocks."
-        response = await self.generate(json_prompt, system, temperature, max_tokens=max_tokens)
-        if not response:
-            return None
+        full_prompt = f"{system}\n\n{prompt}" if system else prompt
 
-        try:
-            text = response.text.strip()
-            # 마크다운 코드블록 제거
-            if text.startswith("```"):
-                text = text.split("\n", 1)[1]
-                if "```" in text:
-                    text = text.rsplit("```", 1)[0]
-            text = text.strip()
-            return json.loads(text)
-        except json.JSONDecodeError:
-            # 응답이 잘린 경우 마지막 완전한 JSON 객체까지만 복구 시도
+        for attempt in range(3):
             try:
+                response = await asyncio.to_thread(
+                    self._model.generate_content,
+                    full_prompt,
+                    generation_config=genai.GenerationConfig(
+                        temperature=temperature,
+                        max_output_tokens=max_tokens,
+                        response_mime_type="application/json",
+                    ),
+                )
                 text = response.text.strip()
-                if text.startswith("```"):
-                    text = text.split("\n", 1)[1]
-                # 열린 브라켓 수만큼 닫기
-                open_braces = text.count("{") - text.count("}")
-                open_brackets = text.count("[") - text.count("]")
-                if open_braces > 0 or open_brackets > 0:
-                    text = text.rstrip(",\n ")
-                    text += "]" * open_brackets + "}" * open_braces
-                    return json.loads(text)
-            except Exception:
-                pass
-            logger.error(f"Gemini JSON 파싱 실패: {response.text[:200]}")
-            return None
+                return json.loads(text)
+            except json.JSONDecodeError:
+                # 잘린 경우 브라켓 복구
+                try:
+                    open_braces = text.count("{") - text.count("}")
+                    open_brackets = text.count("[") - text.count("]")
+                    if open_braces > 0 or open_brackets > 0:
+                        fixed = text.rstrip(",\n ") + "]" * open_brackets + "}" * open_braces
+                        return json.loads(fixed)
+                except Exception:
+                    pass
+                logger.error(f"Gemini JSON 파싱 실패 (attempt {attempt+1}): {text[:200]}")
+            except Exception as e:
+                wait = 2 ** (attempt + 1)
+                logger.warning(f"Gemini JSON retry {attempt+1}/3: {e}, waiting {wait}s")
+                await asyncio.sleep(wait)
+
+        logger.error("Gemini JSON 3회 재시도 실패")
+        return None

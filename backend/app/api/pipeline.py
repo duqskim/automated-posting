@@ -144,13 +144,14 @@ async def get_stage_state(
 
     render_type = sr.get("images_render_type", "scene")
 
-    # 플랫폼 첫 번째 콘텐츠에서 image_prompts 추출
-    image_prompts: list[str] = []
-    content_data = sr.get("content")
-    if content_data:
-        platform_contents = content_data.get("platform_contents", [])
-        if platform_contents:
-            image_prompts = platform_contents[0].get("image_prompts") or []
+    # 이미지 프롬프트: 렌더 후 생성된 실제 프롬프트 우선, 없으면 콘텐츠 플랜의 placeholder
+    image_prompts: list[str] = sr.get("scene_image_prompts") or []
+    if not image_prompts:
+        content_data = sr.get("content")
+        if content_data:
+            platform_contents = content_data.get("platform_contents", [])
+            if platform_contents:
+                image_prompts = platform_contents[0].get("image_prompts") or []
 
     return StageStateResponse(
         current_step=_current_step(sr),

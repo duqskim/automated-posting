@@ -11,7 +11,7 @@ def get_llm_client(role: str) -> BaseLLMClient:
     - character_design: Gemini 2.5 Pro (캐릭터 IP 생성)
     - research: Gemini 2.5 Pro (대량 분석·추론)
     - writing: Gemini 2.5 Pro (콘텐츠 글쓰기)
-    - hooksmith: Gemini 2.0 Flash (창의적 훅 생성 — thinking 없이 temperature 반응성 ↑)
+    - hooksmith: Gemini 2.5 Flash (창의적 훅 생성 — JSON 안정성 + temperature 반응성)
     - analysis: Gemini 2.5 Flash (성과 데이터 분석 — 비용 효율)
     """
     if role == "character_design":
@@ -19,7 +19,7 @@ def get_llm_client(role: str) -> BaseLLMClient:
     elif role in ("research", "keyword_expansion"):
         return GeminiClient(model="gemini-2.5-pro")
     elif role == "hooksmith":
-        return GeminiClient(model="gemini-2.0-flash")
+        return GeminiClient(model="gemini-2.5-flash")
     elif role in ("writing", "copywriting", "editing"):
         return GeminiClient(model="gemini-2.5-pro")
     elif role == "analysis":

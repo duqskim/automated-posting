@@ -265,11 +265,21 @@ async def generate_multiframe_prompts(
 
     # 캐릭터 일관성 지침
     char_note = ""
-    if style_guide.character_descriptions:
+    if character:
+        char_name = character.get("name", "")
+        bible = character.get("bible") or {}
+        char_visual = bible.get("visual_description") or character.get("visual_description", "")
+        char_base_prompt = character.get("base_image_prompt", "")
+        if char_name or char_visual:
+            char_note = f"\nHOST CHARACTER — maintain exact appearance in every shot featuring them:"
+            char_note += f"\nName: {char_name}"
+            if char_visual:
+                char_note += f"\nAppearance: {char_visual}"
+            if char_base_prompt:
+                char_note += f"\nBase image style: {char_base_prompt}"
+    elif style_guide.character_descriptions:
         descs = "; ".join(f"{k}: {v}" for k, v in style_guide.character_descriptions.items())
         char_note = f"\nCHARACTER CONSISTENCY (always match exactly): {descs}"
-    if character and character.get("reference_image_url"):
-        char_note += f"\nReference image URL (match this appearance exactly): {character['reference_image_url']}"
 
     shots_info = "\n".join(
         f"[Shot {idx+1}] Slide {s.slide_index+1}, Frame {s.frame_index+1}\n"
