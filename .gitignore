@@ -11,6 +11,10 @@ env/
 .env.backup
 .env.local
 
+# OAuth Tokens (CRITICAL SECURITY)
+youtube_token.json
+*_token.json
+
 # Database
 *.sqlite
 *.db

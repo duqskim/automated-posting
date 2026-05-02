@@ -330,6 +330,7 @@ class PipelineController:
         return {
             "content": content_plan_to_dict(content),
             "quality_score": quality.score,
+            "quality_status": quality.status,
             "quality_passed": quality.passed,
             "fact_check": fact_check_result,
         }
@@ -807,6 +808,7 @@ class PipelineController:
             shot_script_dict=shot_script_dict,
             frame_image_paths=frame_image_paths,
             frame_motion_prompts=frame_motion_prompts,
+            language=self.profile.language,
         )
 
         # Step 2: Video Reviewer — 품질 검수

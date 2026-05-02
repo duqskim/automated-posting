@@ -23,6 +23,7 @@ class QualityIssue:
 class QualityResult:
     passed: bool
     score: float  # 0~100
+    status: str = "pass"  # "pass" | "warn" | "block"
     issues: list[QualityIssue] = field(default_factory=list)
     fixed_content: ContentPlan | None = None
 
@@ -211,16 +212,30 @@ class QualityGate:
         else:
             score = max(0, 100 - (error_count * 20) - (warning_count * 5))
 
-        passed = error_count == 0 and score >= 60
+        if score < 60:
+            status = "block"
+            passed = False
+        elif score < 75:
+            status = "warn"
+            passed = True
+        else:
+            status = "pass"
+            passed = True
+
+        # error가 하나라도 있으면 block
+        if error_count > 0:
+            status = "block"
+            passed = False
 
         result = QualityResult(
             passed=passed,
             score=score,
+            status=status,
             issues=all_issues,
             fixed_content=content_plan if passed else None,
         )
 
-        logger.info(f"Quality Gate 결과: {'PASS' if passed else 'FAIL'} "
+        logger.info(f"Quality Gate 결과: {status.upper()} "
                      f"(점수: {score}/100, {error_count} errors, {warning_count} warnings)")
 
         if not passed:

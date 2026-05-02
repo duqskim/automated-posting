@@ -13,6 +13,7 @@ from app.models.content import GeneratedContent
 from app.models.user import User
 from app.dependencies import get_current_user
 from app.agents.pipeline import PipelineController
+from app.tasks.celery_app import ASYNC_MODE
 
 router = APIRouter(prefix="/api/pipeline", tags=["pipeline"])
 
@@ -52,6 +53,7 @@ class StageStateResponse(BaseModel):
     image_urls: list[str] = []
     thumbnail_url: str | None = None
     quality_score: float | None = None
+    quality_status: str | None = None  # "pass" | "warn" | "block"
     fact_check: dict | None = None
     video: dict | None = None
     metadata: dict | None = None       # YouTube SEO 메타데이터 (MetadataAgent)
@@ -78,7 +80,9 @@ def _current_step(stage_results: dict | None) -> str:
         if isinstance(video, dict) and video.get("status") == "processing":
             return "video_processing"
         return "video_done"
-    if stage_results.get("images"):
+    if stage_results.get("render_status") == "processing":
+        return "render_processing"
+    if stage_results.get("images") or stage_results.get("frame_image_paths"):
         return "render_done"
     if stage_results.get("content"):
         return "write_done"
@@ -144,6 +148,7 @@ async def get_stage_state(
         image_urls=_image_urls_from_paths(images, render_type),
         thumbnail_url=sr.get("thumbnail_url"),
         quality_score=sr.get("quality_score"),
+        quality_status=sr.get("quality_status"),
         fact_check=sr.get("fact_check"),
         video=video_out,
         metadata=sr.get("metadata"),
@@ -289,6 +294,7 @@ async def run_stage_write(
     sr = dict(sr)
     sr["content"] = result["content"]
     sr["quality_score"] = result["quality_score"]
+    sr["quality_status"] = result.get("quality_status")
     sr["fact_check"] = result.get("fact_check")
     sr.pop("images", None)
     project.stage_results = sr
@@ -299,6 +305,7 @@ async def run_stage_write(
         "step": "write_done",
         "content": result["content"],
         "quality_score": result["quality_score"],
+        "quality_status": result.get("quality_status"),
         "quality_passed": result["quality_passed"],
         "fact_check": result.get("fact_check"),
     }
@@ -354,102 +361,73 @@ async def run_stage_render(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Stage 4: Imagen 3으로 슬라이드별 씬 이미지 생성"""
+    """Stage 4: 씬 이미지 생성 — Celery 백그라운드 작업으로 즉시 반환"""
+    from app.tasks.pipeline_task import run_render_task, ASYNC_MODE
+
     project = await _get_user_project(project_id, current_user.id, db)
     sr = project.stage_results or {}
 
     if not sr.get("content"):
         raise HTTPException(status_code=400, detail="글쓰기를 먼저 실행해주세요")
 
-    controller = PipelineController(project.market)
-
-    # 시리즈 캐릭터 로드 (이미지에 캐릭터 등장)
     character = await _load_series_character(project, db)
+    character_dict = character.model_dump() if character else None
 
-    try:
-        render_result = await controller.run_render(
-            content_dict=sr["content"],
-            topic=project.topic,
-            platform=body.platform,
-            image_provider=body.image_provider,
-            character=character,
+    # Celery 작업 디스패치 (Redis 있을 때) — 즉시 반환
+    if ASYNC_MODE:
+        from app.tasks.celery_app import celery_app as _celery
+        task = _celery.send_task(
+            "pipeline.render",
+            kwargs={
+                "project_id": project_id,
+                "market": project.market,
+                "topic": project.topic,
+                "content_dict": sr["content"],
+                "platform": body.platform,
+                "image_provider": body.image_provider,
+                "character": character_dict,
+            },
         )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"이미지 생성 실패: {e}")
+        # 렌더링 중 상태 저장
+        sr = dict(sr)
+        sr["render_status"] = "processing"
+        sr["render_task_id"] = task.id
+        project.stage_results = sr
+        await db.commit()
+        return {
+            "step": "render_processing",
+            "task_id": task.id,
+            "message": "렌더링이 백그라운드에서 시작됐습니다. /stage로 진행 상황을 확인하세요.",
+        }
 
-    image_paths = render_result["image_paths"]
-    render_type = render_result["render_type"]  # "carousel" | "scene"
-    thumbnail_path = render_result.get("thumbnail_path")
-
-    thumbnail_url = None
-
-    if render_type == "carousel" and thumbnail_path:
-        # ArtDirector가 이미 썸네일 생성 완료
-        thumbnail_url = f"/api/carousel/{Path(thumbnail_path).name}"
-    elif render_type == "scene":
-        # Imagen으로 YouTube 썸네일 별도 생성
-        thumbnail_text = sr["content"].get("thumbnail_text", "")
-        if thumbnail_text:
-            try:
-                from app.agents.media.image_generation import generate_scene_image, SCENES_DIR
-                from app.agents.pipeline import _make_slug
-                slug = _make_slug(project.topic)
-                thumb_path = SCENES_DIR / f"{slug}_thumbnail.jpg"
-                thumb_prompt = (
-                    f"{thumbnail_text}. YouTube thumbnail style, bold visual impact, "
-                    "dramatic lighting, eye-catching composition, 16:9"
-                )
-                result = await generate_scene_image(
-                    slide_text=thumbnail_text,
-                    image_prompt=thumb_prompt,
-                    output_path=thumb_path,
-                    topic=project.topic,
-                    language=controller.profile.language,
-                    aspect_ratio="16:9",
-                )
-                if result:
-                    thumbnail_url = f"/api/scenes/{thumb_path.name}"
-            except Exception as e:
-                logger.warning(f"썸네일 생성 실패 (무시): {e}")
-
+    # Redis 없을 때 — 인라인 실행 (블로킹)
+    logger.warning(f"[render] Redis 없음 — 인라인 실행 (project_id={project_id})")
+    result = run_render_task(
+        project_id=project_id,
+        market=project.market,
+        topic=project.topic,
+        content_dict=sr["content"],
+        platform=body.platform,
+        image_provider=body.image_provider,
+        character=character_dict,
+    )
     sr = dict(sr)
-    sr["images"] = image_paths
-    sr["images_platform"] = body.platform
-    sr["images_render_type"] = render_type
-    if thumbnail_url:
-        sr["thumbnail_url"] = thumbnail_url
-    # 씬 플랫폼 전용: 메타데이터 + 비디오 플랜 + 썸네일 스펙 저장
-    if render_result.get("metadata"):
-        sr["metadata"] = render_result["metadata"]
-    if render_result.get("video_plan"):
-        sr["video_plan"] = render_result["video_plan"]
-    if render_result.get("thumbnail_spec"):
-        sr["thumbnail_spec"] = render_result["thumbnail_spec"]
-    if render_result.get("image_prompts"):
-        sr["scene_image_prompts"] = render_result["image_prompts"]
-    if render_result.get("video_prompts"):
-        sr["video_prompts"] = render_result["video_prompts"]
-    # 신규 멀티샷 파이프라인 데이터
-    if render_result.get("shot_script"):
-        sr["shot_script"] = render_result["shot_script"]
-    if render_result.get("frame_image_paths"):
-        sr["frame_image_paths"] = render_result["frame_image_paths"]
-    if render_result.get("frame_motion_prompts"):
-        sr["frame_motion_prompts"] = render_result["frame_motion_prompts"]
+    sr.update({k: v for k, v in result.items() if v is not None})
     project.stage_results = sr
     project.status = "passed"
     await db.commit()
 
-    image_urls = _image_urls_from_paths(image_paths, render_type)
+    image_paths = result.get("images", [])
+    render_type = result.get("images_render_type", "scene")
     return {
         "step": "render_done",
         "platform": body.platform,
         "render_type": render_type,
-        "image_urls": image_urls,
+        "image_urls": _image_urls_from_paths(image_paths, render_type),
         "images_count": len(image_paths),
-        "thumbnail_url": thumbnail_url,
-        "metadata": render_result.get("metadata"),
-        "thumbnail_spec": render_result.get("thumbnail_spec"),
+        "thumbnail_url": result.get("thumbnail_url"),
+        "metadata": result.get("metadata"),
+        "thumbnail_spec": result.get("thumbnail_spec"),
     }
 
 
@@ -543,7 +521,8 @@ async def run_stage_video(
 
     if not sr.get("content"):
         raise HTTPException(status_code=400, detail="글쓰기를 먼저 실행해주세요")
-    if not sr.get("images"):
+    has_images = sr.get("images") or sr.get("frame_image_paths")
+    if not has_images:
         raise HTTPException(status_code=400, detail="씬 이미지를 먼저 생성해주세요 (Step 4)")
 
     if ASYNC_MODE:
@@ -614,6 +593,7 @@ async def run_stage_video(
             "clips_count": result.get("clips_count", 0),
             "error": result.get("error"),
             "video_review": result.get("video_review"),
+            "srt_paths": result.get("srt_paths"),
         }
         project.stage_results = sr
         await db.commit()
@@ -628,7 +608,122 @@ async def run_stage_video(
             "clips_count": result.get("clips_count", 0),
             "error": result.get("error"),
             "video_review": result.get("video_review"),
+            "srt_paths": result.get("srt_paths"),
         }
+
+
+# ─── Stage 8: 발행 ────────────────────────────────────────────
+
+class PublishRequest(BaseModel):
+    platform: str = "youtube"
+    dry_run: bool = True
+
+
+@router.post("/{project_id}/stage/publish")
+async def run_stage_publish(
+    project_id: int,
+    body: PublishRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Stage 8: 발행 — YouTube 업로드 + SRT 자막"""
+    from app.agents.publisher.agent import PublisherAgent
+    from app.agents.writer.copywriter import ContentPlan, PlatformContent
+    from app.config.market_profile import load_market_profile
+
+    project = await _get_user_project(project_id, current_user.id, db)
+    sr = project.stage_results or {}
+
+    if not sr.get("content"):
+        raise HTTPException(status_code=400, detail="글쓰기를 먼저 실행해주세요")
+
+    video_data = sr.get("video", {})
+    if not video_data.get("full_video") and not body.dry_run:
+        raise HTTPException(status_code=400, detail="영상 제작을 먼저 실행해주세요")
+
+    # 콘텐츠 플랜 재구성
+    content_dict = sr["content"]
+    platform_contents = []
+    for pc in content_dict.get("platform_contents", []):
+        if pc.get("platform") == body.platform:
+            platform_contents.append(PlatformContent(
+                platform=pc["platform"],
+                hook=pc.get("hook", ""),
+                body=pc.get("body", []),
+                caption=pc.get("caption", ""),
+                hashtags=pc.get("hashtags", []),
+                cta=pc.get("cta", ""),
+                image_prompts=pc.get("image_prompts"),
+            ))
+
+    if not platform_contents:
+        raise HTTPException(
+            status_code=400,
+            detail=f"플랫폼 {body.platform} 콘텐츠 없음 — 글쓰기 단계에서 해당 플랫폼을 포함해주세요",
+        )
+
+    content_plan = ContentPlan(
+        topic=content_dict.get("topic", project.topic),
+        platform_contents=platform_contents,
+    )
+
+    # SNS 계정 자격증명 (환경변수에서)
+    import os
+    sns_credentials = {
+        "x": {
+            "api_key": os.environ.get("X_API_KEY"),
+            "api_secret": os.environ.get("X_API_SECRET"),
+            "access_token": os.environ.get("X_ACCESS_TOKEN"),
+            "access_secret": os.environ.get("X_ACCESS_SECRET"),
+        }
+    }
+
+    profile = load_market_profile(project.market)
+    publisher = PublisherAgent(profile, sns_credentials)
+
+    try:
+        result = await publisher.publish(
+            content_plan=content_plan,
+            dry_run=body.dry_run,
+            video_path=video_data.get("full_video"),
+            srt_paths=video_data.get("srt_paths"),
+            metadata=sr.get("metadata"),
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"발행 실패: {e}")
+
+    # stage_results 업데이트
+    sr = dict(sr)
+    sr["publish"] = {
+        "platform": body.platform,
+        "dry_run": body.dry_run,
+        "results": [
+            {
+                "platform": r.platform,
+                "success": r.success,
+                "post_url": r.post_url,
+                "post_id": r.post_id,
+                "error": r.error,
+                "published_at": r.published_at,
+            }
+            for r in result.results
+        ],
+        "success_count": result.success_count,
+        "fail_count": result.fail_count,
+    }
+    if result.success_count > 0:
+        project.status = "published"
+    project.stage_results = sr
+    await db.commit()
+
+    return {
+        "step": "publish_done",
+        "dry_run": body.dry_run,
+        "total": result.total,
+        "success_count": result.success_count,
+        "fail_count": result.fail_count,
+        "results": sr["publish"]["results"],
+    }
 
 
 # ─── 기존 풀 파이프라인 (호환) ────────────────────────────────

@@ -64,13 +64,15 @@ async def generate_image_prompts(
         char_name = character.get("name", "")
         char_visual = character.get("visual_description", "")
         char_base_prompt = character.get("base_image_prompt", "")
+        char_ref_url = character.get("reference_image_url", "")
         bible = character.get("bible") or {}
         char_appearance = bible.get("visual_description") or char_visual
         if char_base_prompt or char_appearance:
+            ref_line = f"\nReference image URL (match this appearance exactly): {char_ref_url}" if char_ref_url else ""
             character_note = f"""
 HOST CHARACTER: {char_name}
 Visual appearance: {char_appearance}
-Base image style: {char_base_prompt}
+Base image style: {char_base_prompt}{ref_line}
 
 CHARACTER APPEARANCE RULES (very important):
 - Slides 1 and last slide: show {char_name} as the on-screen host in the scene
@@ -191,6 +193,8 @@ async def generate_multiframe_prompts(
     if style_guide.character_descriptions:
         descs = "; ".join(f"{k}: {v}" for k, v in style_guide.character_descriptions.items())
         char_note = f"\nCHARACTER CONSISTENCY (always match exactly): {descs}"
+    if character and character.get("reference_image_url"):
+        char_note += f"\nReference image URL (match this appearance exactly): {character['reference_image_url']}"
 
     shots_info = "\n".join(
         f"[Shot {idx+1}] Slide {s.slide_index+1}, Frame {s.frame_index+1}\n"

@@ -1,7 +1,14 @@
 # === LLM ===
 google-generativeai==0.8.3
+google-genai
 anthropic
 openai
+
+# === YouTube / Google APIs ===
+google-api-python-client
+google-auth
+google-auth-httplib2
+google-auth-oauthlib
 
 # === Web Framework ===
 fastapi

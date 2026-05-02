@@ -258,30 +258,63 @@ async def generate_kenburns_sequence(
 
 # ─── ElevenLabs TTS ─────────────────────────────────────────
 
+def _preprocess_tts_text(text: str) -> str:
+    """TTS용 텍스트 전처리 — 자연스러운 호흡/멈춤 추가
+
+    - 줄바꿈으로 분리된 문장들을 모아 마침표+두칸 공백으로 연결
+    - 문장 끝 마침표 없으면 추가
+    - 콜론 뒤 짧은 항목들은 쉼표로 연결 (리스트 나열 방지)
+    """
+    import re
+
+    lines = [l.strip() for l in text.strip().splitlines() if l.strip()]
+    processed = []
+    for line in lines:
+        # 콜론으로 끝나는 헤더 제거하거나 문장화
+        line = re.sub(r"\s*:\s*$", "입니다.", line)
+        # 첫 번째, 두 번째 같은 나열 표현 뒤 쉼표 추가
+        # 마침표 없으면 추가 (요/죠/다/까 로 끝나면 마침표)
+        if line and not line[-1] in ".?!…":
+            line += "."
+        processed.append(line)
+
+    # 문장 사이에 두 칸 공백 (ElevenLabs가 짧은 pause로 처리)
+    return "  ".join(processed)
+
+
 async def generate_tts(
     text: str,
     output_path: Path,
     voice_id: str = "21m00Tcm4TlvDq8ikWAM",  # Rachel (기본)
 ) -> Path | None:
-    """ElevenLabs TTS로 나레이션 생성"""
+    """ElevenLabs TTS로 나레이션 생성 — 자연스러운 음성 설정 포함"""
     api_key = os.environ.get("ELEVENLABS_API_KEY")
     if not api_key:
         logger.warning("  [TTS] ELEVENLABS_API_KEY 없음 — TTS 스킵")
         return None
 
     try:
-        from elevenlabs import ElevenLabs
+        from elevenlabs import ElevenLabs, VoiceSettings
+
+        processed_text = _preprocess_tts_text(text)
+        logger.debug(f"  [TTS] 텍스트 미리보기: {processed_text[:100]}...")
 
         client = ElevenLabs(api_key=api_key)
-        audio = client.generate(
-            text=text,
-            voice=voice_id,
-            model="eleven_multilingual_v2",
+        audio = client.text_to_speech.convert(
+            voice_id=voice_id,
+            text=processed_text,
+            model_id="eleven_multilingual_v2",
+            voice_settings=VoiceSettings(
+                stability=0.35,          # 낮을수록 표현력 풍부 (기본값 0.5)
+                similarity_boost=0.80,   # 클론 목소리 유사도 유지
+                style=0.45,              # 스타일 과장 — 자연스러운 강세
+                use_speaker_boost=True,  # 고품질 화자 부스트
+            ),
         )
 
         audio_bytes = b"".join(audio) if hasattr(audio, "__iter__") else audio
         output_path.write_bytes(audio_bytes)
-        logger.info(f"  [TTS] 저장: {output_path.name}")
+        logger.info(f"  [TTS] 저장: {output_path.name} ({len(audio_bytes)//1024}KB)")
         return output_path
 
     except Exception as e:
@@ -478,6 +511,7 @@ async def _produce_video_multiframe(
     with_tts: bool,
     bgm_category: str,
     slug: str,
+    language: str = "en",
 ) -> dict:
     """ShotFrame 기반 멀티샷 영상 생성
 
@@ -498,46 +532,55 @@ async def _produce_video_multiframe(
         f"  [MultiFrame] {shot_script.total_shots}개 샷으로 {n_slides}슬라이드 생성 시작"
     )
 
-    # ── Step 1: TTS ────────────────────────────────────────────
-    audio_paths: list[Path | None] = [None] * n_slides
-    if tts_provider == "gemini":
-        from app.agents.media.tts_gemini import generate_narrations_gemini
-        logger.info(f"  [MultiFrame] Gemini TTS {n_slides}개 생성...")
-        audio_paths = await generate_narrations_gemini(
-            slide_texts=slide_texts, slug=slug, platform=platform,
-        )
-    elif tts_provider == "elevenlabs" or with_tts:
-        logger.info(f"  [MultiFrame] ElevenLabs TTS {n_slides}개 생성...")
-        tts_tasks = [
-            generate_tts(text, AUDIO_DIR / f"{slug}_{platform}_{i:02d}.mp3", voice_id=tts_voice_id)
-            for i, text in enumerate(slide_texts)
-        ]
-        audio_paths = list(await asyncio.gather(*tts_tasks))
+    # ── Step 1 + 2: TTS와 샷 클립 생성을 병렬 실행 ──────────────
+    # TTS: 슬라이드 텍스트 → 오디오 (ElevenLabs/Gemini)
+    # 클립: 씬 이미지 → 영상 (Kling → Veo → Ken Burns)
+    # 두 작업은 독립적이므로 동시 진행
 
-    # ── Step 2: 샷별 클립 생성 ──────────────────────────────────
-    logger.info(f"  [MultiFrame] 샷 클립 생성 시작...")
+    async def _run_tts() -> list[Path | None]:
+        if tts_provider == "gemini":
+            from app.agents.media.tts_gemini import generate_narrations_gemini
+            logger.info(f"  [TTS] Gemini TTS {n_slides}개 생성...")
+            return await generate_narrations_gemini(
+                slide_texts=slide_texts, slug=slug, platform=platform,
+            )
+        elif tts_provider == "elevenlabs" or with_tts:
+            logger.info(f"  [TTS] ElevenLabs TTS {n_slides}개 병렬 생성...")
+            tasks = [
+                generate_tts(text, AUDIO_DIR / f"{slug}_{i:02d}.mp3", voice_id=tts_voice_id)
+                for i, text in enumerate(slide_texts)
+            ]
+            return list(await asyncio.gather(*tasks))
+        return [None] * n_slides
 
-    # frame_image_paths key 정규화: str → tuple
-    normalized_paths: dict = {}
-    for k, v in frame_image_paths.items():
-        if isinstance(k, str) and "_" in str(k):
-            parts = str(k).split("_")
-            if len(parts) == 2 and all(p.isdigit() for p in parts):
-                normalized_paths[(int(parts[0]), int(parts[1]))] = v
+    async def _run_clips() -> dict:
+        logger.info(f"  [클립] 샷 클립 생성 시작...")
+        # frame_image_paths key 정규화: str → tuple
+        normalized_paths: dict = {}
+        for k, v in frame_image_paths.items():
+            if isinstance(k, str) and "_" in str(k):
+                parts = str(k).split("_")
+                if len(parts) == 2 and all(p.isdigit() for p in parts):
+                    normalized_paths[(int(parts[0]), int(parts[1]))] = v
+                    continue
+            if isinstance(k, (list, tuple)) and len(k) == 2:
+                normalized_paths[(int(k[0]), int(k[1]))] = v
                 continue
-        if isinstance(k, (list, tuple)) and len(k) == 2:
-            normalized_paths[(int(k[0]), int(k[1]))] = v
-            continue
-        normalized_paths[k] = v
+            normalized_paths[k] = v
 
-    shot_clips = await generate_all_shot_clips(
-        shot_script=shot_script,
-        frame_image_paths=normalized_paths,
-        motion_prompts=frame_motion_prompts,
-        clips_dir=CLIPS_DIR,
-        slug=slug,
-        aspect_ratio=aspect_ratio,
-    )
+        return await generate_all_shot_clips(
+            shot_script=shot_script,
+            frame_image_paths=normalized_paths,
+            motion_prompts=frame_motion_prompts,
+            clips_dir=CLIPS_DIR,
+            slug=slug,
+            aspect_ratio=aspect_ratio,
+        )
+
+    # TTS + 클립 생성 병렬 실행 (서로 독립적인 작업)
+    logger.info("  [MultiFrame] TTS + 클립 생성 병렬 실행...")
+    audio_paths, shot_clips = await asyncio.gather(_run_tts(), _run_clips())
+    audio_paths = list(audio_paths)
 
     # ── Step 3+4: 슬라이드별 클립 concat + TTS 믹싱 ──────────────
     logger.info(f"  [MultiFrame] 슬라이드별 조립 시작...")
@@ -609,6 +652,26 @@ async def _produce_video_multiframe(
         except Exception as e:
             logger.warning(f"  [MultiFrame] BGM 실패 (무시): {e}")
 
+    # SRT 자막 생성 (TTS 있을 때만)
+    if tts_provider != "none" and any(p for p in audio_paths if p):
+        try:
+            from app.agents.media.srt_generator import generate_srt_pair
+            srt_dir = OUTPUT_DIR / "srt"
+            valid_audio = [p for p in audio_paths if p and p.exists()]
+            valid_texts = slide_texts[:len(valid_audio)]
+            srt_paths = generate_srt_pair(
+                slide_texts_primary=valid_texts,
+                slide_texts_secondary=None,
+                audio_paths=valid_audio,
+                output_dir=srt_dir,
+                primary_lang=language,
+                slug=slug,
+            )
+            result["srt_paths"] = {k: str(v) for k, v in srt_paths.items()}
+            logger.info(f"  [SRT] {list(srt_paths.keys())} 생성 완료")
+        except Exception as e:
+            logger.warning(f"  [SRT] 생성 실패 (무시): {e}")
+
     logger.info(f"=== VideoProduction (MultiFrame) 완료: {result.get('full_video', 'FAILED')} ===")
     return result
 
@@ -622,7 +685,7 @@ async def produce_video(
     image_prompts: list[str],
     scene_image_paths: list[str],  # Step 4에서 생성된 씬 이미지 경로
     aspect_ratio: str = "16:9",
-    tts_voice_id: str = "21m00Tcm4TlvDq8ikWAM",
+    tts_voice_id: str = "",  # 빈 문자열이면 ELEVENLABS_VOICE_ID env 또는 기본값 사용
     with_tts: bool = False,
     tts_provider: str = "none",   # "none" | "gemini" | "elevenlabs"
     bgm_category: str = "none",   # "none" | "cinematic" | "ambient" | "upbeat" | "dramatic"
@@ -631,6 +694,7 @@ async def produce_video(
     shot_script_dict: dict | None = None,    # CinematicShotPlanner 결과 (신버전)
     frame_image_paths: dict | None = None,   # (slide_idx, frame_idx) → path (신버전)
     frame_motion_prompts: list[str] | None = None,  # 샷별 모션 프롬프트 (신버전)
+    language: str = "en",  # 콘텐츠 언어 — SRT primary 언어 결정
 ) -> dict:
     """
     Step 4 씬 이미지 → Veo 클립 → moviepy 조립 → 영상
@@ -643,6 +707,10 @@ async def produce_video(
           "duration": 42.5,
         }
     """
+    # voice_id: 명시 안 하면 env에서 읽기, 없으면 Rachel 기본값
+    if not tts_voice_id:
+        tts_voice_id = os.environ.get("ELEVENLABS_VOICE_ID", "21m00Tcm4TlvDq8ikWAM")
+
     # 유니코드 정규화 후 ASCII 변환, 불가 시 원본 그대로 (한국어 포함)
     ascii_topic = unicodedata.normalize("NFKD", topic).encode("ascii", "ignore").decode()
     slug_base = ascii_topic if ascii_topic.strip() else topic
@@ -665,6 +733,7 @@ async def produce_video(
             with_tts=with_tts,
             bgm_category=bgm_category,
             slug=slug,
+            language=language,
         )
 
     # ── 구버전 호환: 슬라이드당 1 클립 ───────────────────────────
@@ -804,6 +873,26 @@ async def produce_video(
                     logger.info(f"  [BGM] 믹싱 완료 → {bgm_output.name}")
         except Exception as e:
             logger.warning(f"  [BGM] 실패 (BGM 없이 계속): {e}")
+
+    # Step 5: SRT 자막 생성 (TTS 있을 때만)
+    if tts_provider != "none" and any(p for p in audio_paths if p):
+        try:
+            from app.agents.media.srt_generator import generate_srt_pair
+            srt_dir = OUTPUT_DIR / "srt"
+            valid_audio = [p for p in audio_paths if p and p.exists()]
+            valid_texts = slide_texts[:len(valid_audio)]
+            srt_paths = generate_srt_pair(
+                slide_texts_primary=valid_texts,
+                slide_texts_secondary=None,
+                audio_paths=valid_audio,
+                output_dir=srt_dir,
+                primary_lang=language,
+                slug=slug,
+            )
+            result["srt_paths"] = {k: str(v) for k, v in srt_paths.items()}
+            logger.info(f"  [SRT] {list(srt_paths.keys())} 생성 완료")
+        except Exception as e:
+            logger.warning(f"  [SRT] 생성 실패 (무시): {e}")
 
     logger.info(f"=== VideoProduction 완료: {result.get('full_video', 'FAILED')} ===")
     return result

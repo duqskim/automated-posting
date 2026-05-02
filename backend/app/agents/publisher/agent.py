@@ -96,13 +96,89 @@ class PublisherAgent:
         # Meta Graph API 구현 필요
         return PublishResult(platform="instagram", success=False, error="Instagram API 미구현")
 
-    async def _publish_youtube(self, content: PlatformContent, dry_run: bool = True) -> PublishResult:
-        """YouTube 영상 업로드"""
+    async def _publish_youtube(
+        self,
+        content: PlatformContent,
+        dry_run: bool = True,
+        video_path: str | None = None,
+        srt_paths: dict | None = None,
+        metadata: dict | None = None,
+    ) -> PublishResult:
+        """YouTube 영상 업로드 + SRT 자막"""
         if dry_run:
             logger.info(f"[DRY RUN] YouTube 업로드: {content.hook[:50]}...")
+            logger.info(f"  영상: {video_path or '없음'}")
+            logger.info(f"  SRT: {list((srt_paths or {}).keys())}")
             return PublishResult(platform="youtube", success=True, post_id="dry_run")
 
-        return PublishResult(platform="youtube", success=False, error="YouTube API 미구현")
+        if not video_path:
+            return PublishResult(platform="youtube", success=False, error="영상 파일 경로 없음")
+
+        try:
+            from app.agents.publisher.youtube_uploader import (
+                upload_video, upload_caption, has_valid_token
+            )
+
+            if not has_valid_token():
+                return PublishResult(
+                    platform="youtube", success=False,
+                    error="YouTube 미인증 — python -m app.agents.publisher.youtube_uploader --init-auth 실행 필요"
+                )
+
+            # 메타데이터에서 제목/설명/태그 가져오기
+            meta = metadata or {}
+            title = meta.get("title") or content.hook[:100]
+            description_parts = [content.hook]
+            if content.body:
+                description_parts.append("\n" + "\n\n".join(content.body[:3]))
+            if content.caption:
+                description_parts.append("\n\n" + content.caption)
+            description = "\n".join(description_parts)
+
+            # 챕터 타임스탬프 있으면 설명에 추가
+            if meta.get("chapters"):
+                description += "\n\n" + "\n".join(meta["chapters"])
+
+            tags = content.hashtags + (meta.get("tags") or [])
+
+            result = await asyncio.to_thread(
+                upload_video,
+                video_path=video_path,
+                title=title,
+                description=description,
+                tags=tags[:500],
+                privacy="private",  # 초기 private으로 업로드 후 검토
+            )
+
+            video_id = result["video_id"]
+            post_url = result["url"]
+
+            # SRT 자막 업로드 (EN 우선)
+            if srt_paths:
+                for lang in ("en", "ko", "ja"):
+                    srt_path = srt_paths.get(lang)
+                    if srt_path:
+                        try:
+                            await asyncio.to_thread(
+                                upload_caption,
+                                video_id=video_id,
+                                srt_path=srt_path,
+                                language=lang,
+                            )
+                        except Exception as e:
+                            logger.warning(f"  [YouTube] {lang} 자막 업로드 실패 (무시): {e}")
+
+            return PublishResult(
+                platform="youtube",
+                success=True,
+                post_id=video_id,
+                post_url=post_url,
+                published_at=datetime.now(timezone.utc).isoformat(),
+            )
+
+        except Exception as e:
+            logger.error(f"YouTube 업로드 실패: {e}")
+            return PublishResult(platform="youtube", success=False, error=str(e))
 
     async def _publish_linkedin(self, content: PlatformContent, dry_run: bool = True) -> PublishResult:
         """LinkedIn 포스트"""
@@ -139,19 +215,19 @@ class PublisherAgent:
         producer_result: ProducerResult | None = None,
         dry_run: bool = True,
         stagger_minutes: int = 30,
+        video_path: str | None = None,
+        srt_paths: dict | None = None,
+        metadata: dict | None = None,
     ) -> PublisherResult:
-        """전체 플랫폼 발행"""
+        """전체 플랫폼 발행
+
+        Args:
+            video_path: 업로드할 영상 파일 경로 (YouTube용)
+            srt_paths: {"en": "/path/en.srt", "ko": "/path/ko.srt"} (YouTube 자막)
+            metadata: MetadataAgent 출력 (title, description, tags, chapters)
+        """
         logger.info(f"=== Publisher: '{content_plan.topic}' 발행 "
                      f"{'[DRY RUN]' if dry_run else '[LIVE]'} ===")
-
-        publisher_map = {
-            "x": self._publish_x,
-            "instagram": self._publish_instagram,
-            "youtube": self._publish_youtube,
-            "youtube_shorts": self._publish_youtube,
-            "linkedin": self._publish_linkedin,
-            "threads": self._publish_threads,
-        }
 
         results = []
         for i, content in enumerate(content_plan.platform_contents):
@@ -161,8 +237,25 @@ class PublisherAgent:
                 logger.info(f"시차 발행 대기: {stagger_minutes}분")
                 await asyncio.sleep(wait)
 
-            publisher_fn = publisher_map.get(content.platform, self._publish_generic)
-            result = await publisher_fn(content, dry_run=dry_run)
+            if content.platform in ("youtube", "youtube_shorts"):
+                result = await self._publish_youtube(
+                    content,
+                    dry_run=dry_run,
+                    video_path=video_path,
+                    srt_paths=srt_paths,
+                    metadata=metadata,
+                )
+            elif content.platform == "x":
+                result = await self._publish_x(content, dry_run=dry_run)
+            elif content.platform == "instagram":
+                result = await self._publish_instagram(content, dry_run=dry_run)
+            elif content.platform == "linkedin":
+                result = await self._publish_linkedin(content, dry_run=dry_run)
+            elif content.platform == "threads":
+                result = await self._publish_threads(content, dry_run=dry_run)
+            else:
+                result = await self._publish_generic(content, dry_run=dry_run)
+
             results.append(result)
 
             status = "OK" if result.success else "FAIL"
