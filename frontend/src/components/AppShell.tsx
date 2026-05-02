@@ -25,7 +25,12 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     if (!token) { router.replace("/login"); return; }
     api.auth.me()
       .then(setUser)
-      .catch(() => { localStorage.removeItem("token"); router.replace("/login"); });
+      .catch((err: Error) => {
+        // 401 Unauthorized → apiFetch가 이미 토큰 삭제 + 리다이렉트 처리
+        // 네트워크 에러(백엔드 재시작 중) → 토큰 유지, 로그아웃 안 함
+        if (err?.message === "Unauthorized") return;
+        // 그 외 서버 에러도 로그아웃하지 않음 (일시적 장애일 수 있음)
+      });
   }, [router]);
 
   const logout = () => {

@@ -109,6 +109,8 @@ Rules:
 - If no verified number exists for this topic, use a curiosity/contrarian hook instead of a data hook
 - NEVER fabricate percentages, counts, or statistics not present in research
 - At least 1 hook must exploit a competitor gap
+- Be CREATIVE and VARIED — each hook must feel completely different from the others in angle and approach
+- Avoid generic or predictable phrases — surprise the audience
 
 JSON format:
 {{
