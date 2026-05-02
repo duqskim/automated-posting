@@ -456,7 +456,7 @@ export default function ProjectDetailPage() {
     if (!rewritePanel || !rewritePanel.correctionIntent.trim()) return;
     setRewritePanel(prev => prev ? { ...prev, loading: true } : prev);
     try {
-      const res = await api.pipeline.rewritePrompt(
+      const res = await api.pipeline.rewriteFramePrompt(
         projectId,
         rewritePanel.slideIndex,
         rewritePanel.correctionIntent,
@@ -473,40 +473,27 @@ export default function ProjectDetailPage() {
     if (!rewritePanel?.rewrittenPrompt) return;
     setRewritePanel(prev => prev ? { ...prev, loading: true } : prev);
     try {
-      const res = await api.pipeline.confirmPrompt(
+      const res = await api.pipeline.confirmFramePrompt(
         projectId,
         rewritePanel.slideIndex,
         rewritePanel.rewrittenPrompt,
         videoPlatform,
         true,
       );
-      if (res.image_url) {
-        const bustUrl = `${res.image_url}?t=${Date.now()}`;
-        setStage(prev => {
-          const urls = [...prev.image_urls];
-          urls[rewritePanel.slideIndex] = bustUrl;
-          return { ...prev, image_urls: urls };
-        });
-      }
-      // content의 image_prompts도 업데이트
+      // image_urls + image_prompts 동시 업데이트
+      const frameIdx = rewritePanel.slideIndex;
       setStage(prev => {
-        if (!prev.content) return prev;
-        return {
-          ...prev,
-          content: {
-            ...prev.content,
-            platform_contents: prev.content.platform_contents.map((pc, i) =>
-              i === 0
-                ? {
-                    ...pc,
-                    image_prompts: pc.image_prompts?.map((p, k) =>
-                      k === rewritePanel.slideIndex ? rewritePanel.rewrittenPrompt! : p
-                    ) ?? pc.image_prompts,
-                  }
-                : pc
-            ),
-          },
-        };
+        const updates: Partial<typeof prev> = {};
+        if (res.image_url) {
+          const bustUrl = `${res.image_url}?t=${Date.now()}`;
+          const urls = [...prev.image_urls];
+          urls[frameIdx] = bustUrl;
+          updates.image_urls = urls;
+        }
+        const prompts = [...(prev.image_prompts ?? [])];
+        prompts[frameIdx] = rewritePanel.rewrittenPrompt!;
+        updates.image_prompts = prompts;
+        return { ...prev, ...updates };
       });
       setRewritePanel(null);
     } catch (e: unknown) {
@@ -1043,7 +1030,7 @@ export default function ProjectDetailPage() {
                         <div className="flex items-center gap-2">
                           <button
                             onClick={() => {
-                              const currentPrompt = renderPc?.image_prompts?.[k] ?? "";
+                              const currentPrompt = stage.image_prompts[k] ?? "";
                               setRewritePanel({
                                 slideIndex: k,
                                 correctionIntent: "",

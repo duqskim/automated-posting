@@ -128,6 +128,20 @@ export const api = {
         body: JSON.stringify({ prompt, platform, regenerate }),
       }),
 
+    /** 프레임 이미지 프롬프트 AI 재작성 (씬 기준 flat index) */
+    rewriteFramePrompt: (projectId: number, frameIndex: number, correctionIntent: string, platform: string = "youtube") =>
+      apiFetch(`/api/pipeline/${projectId}/stage/frame/rewrite`, {
+        method: "POST",
+        body: JSON.stringify({ frame_index: frameIndex, correction_intent: correctionIntent, platform }),
+      }),
+
+    /** 프레임 이미지 프롬프트 확정 + 단일 프레임 재생성 */
+    confirmFramePrompt: (projectId: number, frameIndex: number, prompt: string, platform: string = "youtube", regenerate: boolean = true) =>
+      apiFetch(`/api/pipeline/${projectId}/stage/frame/${frameIndex}`, {
+        method: "PATCH",
+        body: JSON.stringify({ prompt, platform, regenerate }),
+      }),
+
     /** Stage 7: 영상 제작 (Veo + TTS + moviepy + BGM) */
     getLog: (projectId: number) =>
       apiFetch(`/api/pipeline/${projectId}/stage/log`),

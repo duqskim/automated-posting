@@ -676,6 +676,186 @@ async def regenerate_single_image(
     }
 
 
+# ─── 프레임별 프롬프트 수정 + 단일 재생성 ────────────────────────
+
+class FrameRewriteRequest(BaseModel):
+    frame_index: int              # scene_image_prompts 기준 flat 인덱스
+    correction_intent: str        # 사용자 수정 요청 (한국어/영어 모두 가능)
+    platform: str = "youtube"
+
+
+class FramePatchRequest(BaseModel):
+    prompt: str                   # 확정된 프롬프트
+    platform: str = "youtube"
+    regenerate: bool = True       # True면 해당 프레임 즉시 재생성
+
+
+@router.post("/{project_id}/stage/frame/rewrite")
+async def rewrite_frame_prompt(
+    project_id: int,
+    body: FrameRewriteRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    프레임 이미지 프롬프트 AI 재작성 (Step 1)
+
+    frame_index = scene_image_prompts 기준 flat 인덱스 (0~N)
+    correction_intent를 반영해 AI가 프롬프트를 재작성해 반환합니다.
+    확정 후 PATCH /stage/frame/{frame_index}로 저장 + 재생성합니다.
+    """
+    from app.agents.media.image_prompter import rewrite_prompt
+    from app.agents.media.cinematic_shot_planner import ShotScript
+    from app.agents.pipeline import content_plan_from_dict
+
+    project = await _get_user_project(project_id, current_user.id, db)
+    sr = project.stage_results or {}
+
+    scene_prompts: list[str] = sr.get("scene_image_prompts") or []
+    if body.frame_index >= len(scene_prompts):
+        raise HTTPException(status_code=400, detail=f"frame_index {body.frame_index} 범위 초과 (총 {len(scene_prompts)}개)")
+
+    current_prompt = scene_prompts[body.frame_index]
+
+    # 해당 프레임의 슬라이드 텍스트 찾기 (shot_script 활용)
+    slide_text = ""
+    shot_script_data = sr.get("shot_script")
+    if shot_script_data:
+        try:
+            shot_script = ShotScript.from_dict(shot_script_data)
+            if body.frame_index < len(shot_script.shots):
+                shot = shot_script.shots[body.frame_index]
+                content_plan = content_plan_from_dict(sr["content"]) if sr.get("content") else None
+                if content_plan:
+                    target = next(
+                        (pc for pc in content_plan.platform_contents if pc.platform == body.platform),
+                        content_plan.platform_contents[0] if content_plan.platform_contents else None,
+                    )
+                    if target and shot.slide_index < len(target.body):
+                        slide_text = target.body[shot.slide_index]
+        except Exception:
+            pass
+
+    character_dict = await _load_series_character(project, db)
+
+    try:
+        new_prompt = await rewrite_prompt(
+            current_prompt=current_prompt,
+            correction_intent=body.correction_intent,
+            slide_text=slide_text,
+            topic=project.topic,
+            character=character_dict,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"프롬프트 재작성 실패: {e}")
+
+    return {
+        "frame_index": body.frame_index,
+        "original_prompt": current_prompt,
+        "rewritten_prompt": new_prompt,
+        "correction_intent": body.correction_intent,
+        "slide_text_preview": slide_text[:100] if slide_text else "",
+    }
+
+
+@router.patch("/{project_id}/stage/frame/{frame_index}")
+async def confirm_frame_prompt(
+    project_id: int,
+    frame_index: int,
+    body: FramePatchRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    프레임 이미지 프롬프트 확정 + 선택적 단일 재생성 (Step 2)
+
+    scene_image_prompts[frame_index]를 업데이트하고,
+    regenerate=True면 해당 프레임 이미지만 재생성합니다.
+    """
+    from app.agents.media.image_generation import generate_scene_image, SCENES_DIR, PLATFORM_ASPECT
+    from app.agents.media.cinematic_shot_planner import ShotScript
+    from app.agents.pipeline import content_plan_from_dict, _make_slug
+
+    project = await _get_user_project(project_id, current_user.id, db)
+    sr = dict(project.stage_results or {})
+
+    scene_prompts: list[str] = list(sr.get("scene_image_prompts") or [])
+    if frame_index >= len(scene_prompts):
+        raise HTTPException(status_code=400, detail=f"frame_index {frame_index} 범위 초과 (총 {len(scene_prompts)}개)")
+
+    # 프롬프트 업데이트
+    scene_prompts[frame_index] = body.prompt
+    sr["scene_image_prompts"] = scene_prompts
+
+    image_url: str | None = None
+
+    if body.regenerate:
+        shot_script_data = sr.get("shot_script")
+        if not shot_script_data:
+            raise HTTPException(status_code=400, detail="shot_script 없음 — 씬 이미지 생성을 먼저 실행하세요")
+
+        shot_script = ShotScript.from_dict(shot_script_data)
+        if frame_index >= len(shot_script.shots):
+            raise HTTPException(status_code=400, detail="frame_index가 shot_script 범위 초과")
+
+        shot = shot_script.shots[frame_index]
+        si, fi = shot.slide_index, shot.frame_index
+
+        # 슬라이드 텍스트
+        slide_text = ""
+        if sr.get("content"):
+            content_plan = content_plan_from_dict(sr["content"])
+            target = next(
+                (pc for pc in content_plan.platform_contents if pc.platform == body.platform),
+                content_plan.platform_contents[0] if content_plan.platform_contents else None,
+            )
+            if target and si < len(target.body):
+                slide_text = target.body[si]
+
+        slug = _make_slug(project.topic)
+        path = SCENES_DIR / f"{slug}_{body.platform}_s{si:02d}_f{fi:02d}.jpg"
+        aspect_ratio = PLATFORM_ASPECT.get(body.platform, "16:9")
+
+        try:
+            result = await generate_scene_image(
+                slide_text=slide_text,
+                image_prompt=body.prompt,
+                output_path=path,
+                topic=project.topic,
+                language=PipelineController(project.market).profile.language,
+                aspect_ratio=aspect_ratio,
+            )
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"이미지 재생성 실패: {e}")
+
+        if result:
+            # frame_image_paths 업데이트 (str key "si_fi")
+            frame_paths = dict(sr.get("frame_image_paths") or {})
+            key = f"{si}_{fi}"
+            frame_paths[key] = str(result)
+            sr["frame_image_paths"] = frame_paths
+
+            # flat images 리스트도 동기화
+            images = list(sr.get("images") or [])
+            if frame_index < len(images):
+                images[frame_index] = str(result)
+                sr["images"] = images
+
+            image_url = f"/api/scenes/{Path(result).name}"
+        else:
+            logger.warning(f"[frame patch] 이미지 재생성 실패 (프롬프트는 저장됨) frame={frame_index}")
+
+    project.stage_results = sr
+    await db.commit()
+
+    return {
+        "frame_index": frame_index,
+        "prompt_saved": True,
+        "image_regenerated": body.regenerate and image_url is not None,
+        "image_url": image_url,
+    }
+
+
 class VideoRequest(BaseModel):
     platform: str = "youtube"
     tts_provider: str = "none"   # "none" | "gemini" | "elevenlabs"
