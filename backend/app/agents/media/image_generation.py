@@ -134,13 +134,17 @@ async def _generate_with_gemini_native(prompt: str, output_path: Path, model: st
     logger.info(f"  [{model}] 네이티브 이미지 생성: {prompt[:60]}...")
     try:
         client = genai.Client(api_key=api_key)
-        response = client.models.generate_content(
-            model=model,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                response_modalities=["IMAGE", "TEXT"],
-            ),
-        )
+
+        def _sync_call():
+            return client.models.generate_content(
+                model=model,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    response_modalities=["IMAGE", "TEXT"],
+                ),
+            )
+
+        response = await asyncio.to_thread(_sync_call)
         for part in response.candidates[0].content.parts:
             if part.inline_data and part.inline_data.mime_type.startswith("image/"):
                 img_bytes = part.inline_data.data
@@ -216,17 +220,21 @@ async def _generate_scene_image_inner(
         logger.info(f"  [Imagen4] 생성: {prompt[:60]}...")
         try:
             client = genai.Client(api_key=api_key)
-            response = client.models.generate_images(
-                model="imagen-4.0-generate-001",
-                prompt=prompt,
-                config=types.GenerateImagesConfig(
-                    aspect_ratio=aspect_ratio,
-                    number_of_images=1,
-                    person_generation="allow_adult",
-                    output_mime_type="image/jpeg",
-                    output_compression_quality=90,
-                ),
-            )
+
+            def _sync_imagen():
+                return client.models.generate_images(
+                    model="imagen-4.0-generate-001",
+                    prompt=prompt,
+                    config=types.GenerateImagesConfig(
+                        aspect_ratio=aspect_ratio,
+                        number_of_images=1,
+                        person_generation="allow_adult",
+                        output_mime_type="image/jpeg",
+                        output_compression_quality=90,
+                    ),
+                )
+
+            response = await asyncio.to_thread(_sync_imagen)
 
             if response.generated_images:
                 img_bytes = response.generated_images[0].image.image_bytes

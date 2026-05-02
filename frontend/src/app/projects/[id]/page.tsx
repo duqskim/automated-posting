@@ -169,7 +169,7 @@ export default function ProjectDetailPage() {
     video: null,
   });
   const [videoPlatform, setVideoPlatform] = useState("youtube");
-  const [imageProvider, setImageProvider] = useState<"auto" | "imagen" | "gemini-flash" | "gemini-pro" | "gpt-image-1" | "dalle">("gemini-pro");
+  const [imageProvider, setImageProvider] = useState<"auto" | "imagen" | "gemini-flash" | "gemini-pro" | "gpt-image-1" | "dalle">("gemini-flash");
   const [ttsPlatform, setTtsPlatform] = useState<"none" | "gemini" | "elevenlabs">("gemini");
   const [bgmCategory, setBgmCategory] = useState<"none" | "cinematic" | "ambient" | "upbeat" | "dramatic">("cinematic");
   const [publishPlatform, setPublishPlatform] = useState("youtube");
@@ -387,9 +387,13 @@ export default function ProjectDetailPage() {
 
       // 비동기 모드(Celery): render_processing 반환 → 완료될 때까지 폴링
       if (res.step === "render_processing") {
-        setImageStep("Celery 작업 처리 중... 완료까지 대기 중");
+        setImageStep("이미지 생성 중... (최대 10분 소요)");
+        const deadline = Date.now() + 10 * 60 * 1000; // 10분 타임아웃
         const poll = async (): Promise<void> => {
-          await new Promise(r => setTimeout(r, 4000));
+          await new Promise(r => setTimeout(r, 5000));
+          if (Date.now() > deadline) {
+            throw new Error("이미지 생성 시간 초과 (10분). 더 빠른 엔진(gemini-flash)으로 재시도해 주세요.");
+          }
           const state = await api.pipeline.getStage(projectId);
           if (state.current_step === "render_done" || (state.image_urls?.length ?? 0) > 0) {
             const ts = Date.now();
@@ -402,7 +406,8 @@ export default function ProjectDetailPage() {
             return;
           }
           if (state.current_step === "render_failed") {
-            throw new Error("이미지 생성 실패 (Celery)");
+            const errMsg = (state as Record<string, unknown>).render_error as string | undefined;
+            throw new Error(`이미지 생성 실패: ${errMsg ?? "알 수 없는 오류"}`);
           }
           return poll();
         };

@@ -218,7 +218,7 @@ if ASYNC_MODE and celery_app:
             }
         except Exception as e:
             logger.error(f"[Celery] 렌더 실패: project_id={project_id}, error={e}")
-            render_data = {"render_error": str(e)}
+            render_data = {"render_error": str(e), "render_status": "failed"}
 
         _write_stage_result_to_db(project_id, "render", render_data)
         logger.info(f"[Celery] 렌더 태스크 종료: project_id={project_id}")

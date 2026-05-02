@@ -83,6 +83,8 @@ def _current_step(stage_results: dict | None) -> str:
         if isinstance(video, dict) and video.get("status") == "processing":
             return "video_processing"
         return "video_done"
+    if stage_results.get("render_status") == "failed" or stage_results.get("render_error"):
+        return "render_failed"
     if stage_results.get("render_status") == "processing":
         return "render_processing"
     if stage_results.get("images") or stage_results.get("frame_image_paths"):
