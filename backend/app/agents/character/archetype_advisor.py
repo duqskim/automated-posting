@@ -112,7 +112,7 @@ Respond in JSON:
   "hybrid_note": "If there's a compelling case for blending two archetypes, describe it. Otherwise state 'Pure archetype recommended'."
 }}"""
 
-        result = await self.llm.generate_json(prompt)
+        result = await self.llm.generate_json(prompt, max_tokens=8192)
         if not result:
             logger.error("[ArchetypeAdvisor] LLM 응답 없음")
             return None

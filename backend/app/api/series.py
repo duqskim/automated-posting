@@ -401,6 +401,7 @@ async def create_character(
     """시리즈 캐릭터 생성"""
     s = await _get_user_series(series_id, current_user.id, db)
     c = SeriesCharacter(
+        user_id=current_user.id,
         series_id=s.id,
         name=body.name,
         concept=body.concept,

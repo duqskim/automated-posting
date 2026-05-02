@@ -16,6 +16,10 @@ from loguru import logger
 SCENES_DIR = Path(__file__).parents[3] / "output" / "scenes"
 SCENES_DIR.mkdir(parents=True, exist_ok=True)
 
+# 동시 이미지 생성 제한 — API quota 과부하 방지
+# Imagen4: 분당 10 RPM 제한, OpenAI: billing 보호
+_IMAGE_SEMAPHORE = asyncio.Semaphore(4)
+
 # 플랫폼 → Imagen aspect_ratio
 PLATFORM_ASPECT = {
     "youtube":        "16:9",
@@ -172,6 +176,21 @@ async def generate_scene_image(
       "gpt-image-1" — gpt-image-1 전용 (권장)
       "dalle"       — DALL-E 3 전용
     """
+    async with _IMAGE_SEMAPHORE:
+        return await _generate_scene_image_inner(
+            slide_text, image_prompt, output_path, topic, language, aspect_ratio, image_provider
+        )
+
+
+async def _generate_scene_image_inner(
+    slide_text: str,
+    image_prompt: str,
+    output_path: Path,
+    topic: str = "",
+    language: str = "en",
+    aspect_ratio: str = "16:9",
+    image_provider: str = "auto",
+) -> Path | None:
     prompt = _build_imagen_prompt(slide_text, image_prompt, topic, language)
 
     if image_provider == "gemini-flash":

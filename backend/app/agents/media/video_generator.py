@@ -3,7 +3,8 @@ VideoGenerator — 멀티 서비스 영상 클립 생성
 
 샷 타입에 따라 최적 도구 선택:
   DYNAMIC      → Kling AI image-to-video (실제 모션)
-                 Kling 실패 시 → Ken Burns fallback
+                 Kling 실패/잔액부족 시 → Google Veo 2 fallback
+                 Veo 실패 시 → Ken Burns fallback
   ATMOSPHERIC  → Ken Burns (의도적 카메라 드리프트, 풍경/분위기용)
   STATIC_GRAPHIC → ffmpeg 느린 팬/줌 (지도, 다이어그램용)
 
@@ -13,7 +14,8 @@ image_tail 규칙:
   - 다른 scene_id는 하드컷 (image_tail 없음)
 
 클립 길이:
-  - Kling: 항상 5초 생성. duration_target > 5s면 KB로 연장, < 5s면 trim
+  - Kling: 항상 5초 생성. duration_target > 5s면 Veo/KB로 연장, < 5s면 trim
+  - Veo 2: 5~8초 생성. Kling 대체 또는 보완
   - Ken Burns: duration_target 만큼 생성 (5초 클립 N개 concat)
   - ffmpeg: duration_target 만큼 생성
 """
@@ -121,14 +123,82 @@ async def _kling_clip(
         return None
 
 
+# ─── Google Veo 2 ─────────────────────────────────────────────
+
+async def _veo_clip(
+    image_path: Path,
+    motion_prompt: str,
+    output_path: Path,
+    aspect_ratio: str = "16:9",
+    duration_seconds: int = 5,
+) -> Path | None:
+    """Google Veo 2 image-to-video — Gemini API 키로 접근"""
+    import os
+    try:
+        from google import genai
+        from google.genai import types as gtypes
+
+        api_key = os.environ.get("GEMINI_API_KEY", "")
+        if not api_key:
+            logger.warning("  [Veo] GEMINI_API_KEY 없음")
+            return None
+
+        logger.info(f"  [Veo2] 클립 생성: {motion_prompt[:70]}...")
+
+        client = genai.Client(api_key=api_key)
+        image_bytes = image_path.read_bytes()
+
+        # 이미지 MIME 타입 감지
+        mime = "image/jpeg" if image_path.suffix.lower() in (".jpg", ".jpeg") else "image/png"
+
+        op = client.models.generate_videos(
+            model="veo-2.0-generate-001",
+            prompt=motion_prompt,
+            image=gtypes.Image(image_bytes=image_bytes, mime_type=mime),
+            config=gtypes.GenerateVideosConfig(
+                aspect_ratio=aspect_ratio,
+                number_of_videos=1,
+                duration_seconds=min(duration_seconds, 8),  # Veo 최대 8초
+            ),
+        )
+
+        # 폴링 (최대 3분)
+        for waited in range(10, 181, 10):
+            await asyncio.sleep(10)
+            op = await asyncio.to_thread(client.operations.get, op)
+            logger.info(f"    [Veo2] 대기 중... {waited}s")
+            if op.done:
+                break
+
+        if not op.done:
+            logger.warning("  [Veo2] 타임아웃")
+            return None
+
+        videos = op.response.generated_videos
+        if not videos:
+            logger.error("  [Veo2] 생성된 영상 없음")
+            return None
+
+        video_data = await asyncio.to_thread(client.files.download, file=videos[0].video)
+        output_path.write_bytes(video_data)
+        logger.info(f"  [Veo2] 저장: {output_path.name} ({len(video_data)//1024}KB)")
+        return output_path
+
+    except Exception as e:
+        logger.error(f"  [Veo2] 실패: {e}")
+        return None
+
+
 # ─── Ken Burns ────────────────────────────────────────────────
 
+# KB 효과: (label, zoom_expr, x_expr_template, y_expr_template)
+# {F} → 실제 프레임 수로 치환 (d 변수 사용 안 함 — ffmpeg 버전 호환)
 _KB_EFFECTS = [
-    ("zoom_in",   "min(zoom+0.002,1.25)", "iw/2-(iw/zoom/2)",         "ih/2-(ih/zoom/2)"),
-    ("zoom_out",  "if(eq(on,1),1.25,max(zoom-0.002,1.0))", "iw/2-(iw/zoom/2)", "ih/2-(ih/zoom/2)"),
-    ("pan_right", "1.1",  "(iw-iw/zoom)*min(on/d,1)",          "ih/2-(ih/zoom/2)"),
-    ("pan_left",  "1.1",  "(iw-iw/zoom)*(1-min(on/d,1))",      "ih/2-(ih/zoom/2)"),
-    ("diag_tl",   "min(zoom+0.002,1.25)", "iw*0.05*min(on/d,1)", "ih*0.05*min(on/d,1)"),
+    ("zoom_in",   "min(zoom+0.002,1.25)", "iw/2-(iw/zoom/2)",                   "ih/2-(ih/zoom/2)"),
+    ("zoom_out",  "if(eq(on,1),1.25,max(zoom-0.002,1.0))", "iw/2-(iw/zoom/2)",  "ih/2-(ih/zoom/2)"),
+    ("pan_right", "1.1",  "(iw-iw/zoom)*min(on/{F},1)",                          "ih/2-(ih/zoom/2)"),
+    ("pan_left",  "1.1",  "(iw-iw/zoom)*(1-min(on/{F},1))",                      "ih/2-(ih/zoom/2)"),
+    ("diag_tl",   "min(zoom+0.002,1.25)", "iw*0.05*min(on/{F},1)",               "ih*0.05*min(on/{F},1)"),
 ]
 
 
@@ -141,8 +211,10 @@ async def _kenburns_clip(
 ) -> Path | None:
     """ffmpeg Ken Burns 효과 — 5초 고정 클립"""
     w, h = {"9:16": (720, 1280), "1:1": (1080, 1080)}.get(aspect_ratio, (1280, 720))
-    label, z_expr, x_expr, y_expr = _KB_EFFECTS[effect_index % len(_KB_EFFECTS)]
+    label, z_expr, x_expr_tpl, y_expr_tpl = _KB_EFFECTS[effect_index % len(_KB_EFFECTS)]
     frames = duration * 25
+    x_expr = x_expr_tpl.replace("{F}", str(frames))
+    y_expr = y_expr_tpl.replace("{F}", str(frames))
     vf = (
         f"scale={w*2}:{h*2},"
         f"zoompan=z='{z_expr}':x='{x_expr}':y='{y_expr}':d={frames}:s={w}x{h}:fps=25,"
@@ -303,29 +375,47 @@ async def generate_shot_clip(
     dur = max(3.0, shot.duration_target)
 
     if shot.shot_type == "DYNAMIC":
-        # Kling 시도
+        # 1. Kling 시도
         kling_out = output_path.with_name(output_path.stem + "_kling.mp4")
         kling_result = await _kling_clip(image_path, motion_prompt, kling_out, aspect_ratio, tail_image_path)
 
         if kling_result:
             if dur <= 5.0:
-                # trim
-                trimmed = output_path.with_name(output_path.stem + "_trim.mp4")
                 return await _trim_clip(kling_result, dur, output_path)
             else:
-                # Kling 5s + KB 연장
+                # Kling 5s + Veo/KB 연장
                 extend_dur = dur - 5.0
-                kb_out = output_path.with_name(output_path.stem + "_kb.mp4")
-                kb_result = await _kenburns_sequence(image_path, kb_out, extend_dur, aspect_ratio, kb_effect_index)
+                ext_out = output_path.with_name(output_path.stem + "_ext.mp4")
+                veo_ext = await _veo_clip(image_path, motion_prompt, ext_out, aspect_ratio, min(int(extend_dur), 8))
+                if veo_ext:
+                    return await _concat_two(kling_result, veo_ext, output_path)
+                kb_result = await _kenburns_sequence(image_path, ext_out, extend_dur, aspect_ratio, kb_effect_index)
                 if kb_result:
                     return await _concat_two(kling_result, kb_result, output_path)
-                # KB 연장 실패 → Kling 5s만 사용
                 shutil.copy2(kling_result, output_path)
                 return output_path
 
-        # Kling 실패 → KB fallback
-        logger.info(f"  [VideoGenerator] Kling 실패 → Ken Burns fallback (slide {shot.slide_index+1}, shot {shot.frame_index+1})")
-        return await _kenburns_sequence(image_path, output_path, dur, aspect_ratio, kb_effect_index)
+        # 2. Kling 실패 → Veo 2 fallback
+        logger.info(f"  [VideoGenerator] Kling 실패 → Veo 2 fallback (slide {shot.slide_index+1}, shot {shot.frame_index+1})")
+        veo_out = output_path.with_name(output_path.stem + "_veo.mp4")
+        veo_result = await _veo_clip(image_path, motion_prompt, veo_out, aspect_ratio, min(int(dur), 8))
+
+        if veo_result:
+            if dur <= 8.0:
+                return await _trim_clip(veo_result, dur, output_path)
+            else:
+                # Veo 8s + KB 연장
+                extend_dur = dur - 8.0
+                kb_out = output_path.with_name(output_path.stem + "_kb.mp4")
+                kb_result = await _kenburns_sequence(image_path, kb_out, extend_dur, aspect_ratio, kb_effect_index)
+                if kb_result:
+                    return await _concat_two(veo_result, kb_result, output_path)
+                shutil.copy2(veo_result, output_path)
+                return output_path
+
+        # Kling, Veo 모두 실패 → 스킵 (Ken Burns 폴백 없음 — 시간/비용 낭비)
+        logger.warning(f"  [VideoGenerator] Kling+Veo 모두 실패, 클립 스킵 (slide {shot.slide_index+1}, shot {shot.frame_index+1})")
+        return None
 
     elif shot.shot_type == "ATMOSPHERIC":
         return await _kenburns_sequence(image_path, output_path, dur, aspect_ratio, kb_effect_index)

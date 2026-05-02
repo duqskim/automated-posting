@@ -75,7 +75,9 @@ Rules:
 - Each hook uses a different style (data, result, contrarian, curiosity, urgency)
 - Thumbnail copy in {self.profile.thumbnail.style} style
 - WRITE ENTIRELY IN {lang_name.upper()} — every word
-- Use specific numbers (47.3% YES, "about 50%" NO)
+- Numbers in hooks MUST come from the research data above — NEVER invent statistics
+- If no verified number exists for this topic, use a curiosity/contrarian hook instead of a data hook
+- NEVER fabricate percentages, counts, or statistics not present in research
 - At least 1 hook must exploit a competitor gap
 
 JSON format:

@@ -66,9 +66,11 @@ class ProducerAgent:
 
             client = AsyncElevenLabs(api_key=settings.elevenlabs_api_key)
 
+            from elevenlabs import VoiceSettings
+
             # 언어별 기본 보이스 ID
             voice_map = {
-                "ko": "jBpfAIEEiiSp5FdERfwz",  # Korean voice
+                "ko": "y1NhmBYYU2Qohn8eR3YT",  # Korean voice
                 "en": "JBFqnCBsd6RMkjVDRZzb",   # English voice
                 "ja": "bIHbv24MWmeRgasZH58o",    # Japanese voice
             }
@@ -82,6 +84,12 @@ class ProducerAgent:
                     voice_id=voice_id,
                     text=text,
                     model_id="eleven_multilingual_v2",
+                    voice_settings=VoiceSettings(
+                        stability=0.35,
+                        similarity_boost=0.80,
+                        style=0.45,
+                        use_speaker_boost=True,
+                    ),
                 )
 
                 filename = AUDIO_DIR / f"{project_slug}_narration_{i+1:02d}.mp3"

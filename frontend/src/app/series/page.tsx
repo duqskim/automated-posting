@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { api } from "@/lib/api";
+import AppShell from "@/components/AppShell";
 
 interface Series {
   id: number;
@@ -63,24 +64,14 @@ export default function SeriesListPage() {
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b sticky top-0 bg-background z-10">
-        <div className="container mx-auto flex items-center justify-between h-14 px-4">
-          <button onClick={() => router.push("/dashboard")} className="text-lg font-bold hover:opacity-80">
-            Automated Posting
-          </button>
-          <Button size="sm" onClick={() => router.push("/series/new")}>
-            + 새 시리즈
-          </Button>
-        </div>
-      </header>
-
-      <div className="container mx-auto px-4 py-8 max-w-3xl">
-        <div className="mb-6">
-          <h2 className="text-2xl font-bold mb-1">시리즈</h2>
-          <p className="text-muted-foreground text-sm">
-            연속 에피소드로 구성된 콘텐츠 시리즈를 관리합니다
-          </p>
+    <AppShell>
+      <div className="container mx-auto px-4 py-6 max-w-3xl">
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h2 className="text-xl font-bold">시리즈</h2>
+            <p className="text-muted-foreground text-sm mt-0.5">연속 에피소드로 구성된 콘텐츠 시리즈</p>
+          </div>
+          <Button size="sm" onClick={() => router.push("/series/new")}>+ 새 시리즈</Button>
         </div>
 
         {loading ? (
@@ -144,6 +135,6 @@ export default function SeriesListPage() {
           </div>
         )}
       </div>
-    </div>
+    </AppShell>
   );
 }

@@ -156,6 +156,14 @@ export const api = {
   markets: {
     list: () => apiFetch("/api/projects/markets"),
   },
+  characters: {
+    list: () => apiFetch("/api/characters"),
+    assignSeries: (characterId: number, seriesId: number | null) =>
+      apiFetch(`/api/characters/${characterId}/assign-series`, {
+        method: "PATCH",
+        body: JSON.stringify({ series_id: seriesId }),
+      }),
+  },
   series: {
     list: () => apiFetch("/api/series"),
     create: (data: {

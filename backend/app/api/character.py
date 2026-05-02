@@ -26,8 +26,78 @@ from app.agents.character.archetype_advisor import ArchetypeAdvisor, archetype_a
 from app.agents.character.concept_generator import ConceptGenerator, concept_options_to_dict
 from app.agents.character.bible_writer import BibleWriter, bible_to_dict
 
-router = APIRouter(prefix="/api/series/{series_id}/characters", tags=["character"])
 
+# ── 전체 캐릭터 라이브러리 (/api/characters) ──────────────────────────────────
+
+@chars_router.get("")
+async def list_all_characters(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """유저 소유 캐릭터 전체 목록 (시리즈 무관)"""
+    result = await db.execute(
+        select(SeriesCharacter, ContentSeries.name.label("series_name"))
+        .outerjoin(ContentSeries, SeriesCharacter.series_id == ContentSeries.id)
+        .where(SeriesCharacter.user_id == user.id)
+        .order_by(SeriesCharacter.id.desc())
+    )
+    rows = result.all()
+    return [
+        {
+            "id": char.id,
+            "name": char.name,
+            "status": char.status,
+            "concept": char.concept,
+            "personality": char.personality,
+            "visual_description": char.visual_description,
+            "reference_image_url": char.reference_image_url,
+            "series_id": char.series_id,
+            "series_name": series_name,
+            "bible": char.bible,
+        }
+        for char, series_name in rows
+    ]
+
+
+@chars_router.patch("/{character_id}/assign-series")
+async def assign_character_to_series(
+    character_id: int,
+    body: dict,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """캐릭터를 다른 시리즈에 연결 (재활용)"""
+    result = await db.execute(
+        select(SeriesCharacter).where(
+            SeriesCharacter.id == character_id,
+            SeriesCharacter.user_id == user.id,
+        )
+    )
+    char = result.scalar_one_or_none()
+    if not char:
+        raise HTTPException(404, "캐릭터를 찾을 수 없습니다")
+
+    series_id = body.get("series_id")
+    if series_id is not None:
+        # 시리즈 소유권 확인
+        s_result = await db.execute(
+            select(ContentSeries).where(
+                ContentSeries.id == series_id,
+                ContentSeries.user_id == user.id,
+            )
+        )
+        if not s_result.scalar_one_or_none():
+            raise HTTPException(404, "시리즈를 찾을 수 없습니다")
+
+    char.series_id = series_id
+    await db.commit()
+    return {"id": char.id, "series_id": char.series_id}
+
+router = APIRouter(tags=["character"])
+chars_router = APIRouter(prefix="/api/characters", tags=["character"])
+
+
+series_chars_router = APIRouter(prefix="/api/series/{series_id}/characters", tags=["character"])
 
 # ── helpers ────────────────────────────────────────────────────────────────
 
@@ -67,7 +137,7 @@ async def _get_series(series_id: int, user: User, db: AsyncSession) -> ContentSe
 
 # ── GET session state ───────────────────────────────────────────────────────
 
-@router.get("/{character_id}/design")
+@series_chars_router.get("/{character_id}/design")
 async def get_design_session(
     series_id: int,
     character_id: int,
@@ -86,7 +156,7 @@ async def get_design_session(
 
 # ── Stage 1: Audience Research ─────────────────────────────────────────────
 
-@router.post("/{character_id}/design/audience")
+@series_chars_router.post("/{character_id}/design/audience")
 async def run_audience_research(
     series_id: int,
     character_id: int,
@@ -127,7 +197,7 @@ async def run_audience_research(
 
 # ── Stage 2: Archetype Advice ──────────────────────────────────────────────
 
-@router.post("/{character_id}/design/archetypes")
+@series_chars_router.post("/{character_id}/design/archetypes")
 async def run_archetype_advice(
     series_id: int,
     character_id: int,
@@ -175,7 +245,7 @@ class SelectArchetypeRequest(BaseModel):
     index: int  # 0, 1, 2
 
 
-@router.post("/{character_id}/design/archetypes/select")
+@series_chars_router.post("/{character_id}/design/archetypes/select")
 async def select_archetype(
     series_id: int,
     character_id: int,
@@ -204,7 +274,7 @@ async def select_archetype(
 
 # ── Stage 3: Concept Generation ────────────────────────────────────────────
 
-@router.post("/{character_id}/design/concepts")
+@series_chars_router.post("/{character_id}/design/concepts")
 async def run_concept_generation(
     series_id: int,
     character_id: int,
@@ -264,7 +334,7 @@ class SelectConceptRequest(BaseModel):
     index: int
 
 
-@router.post("/{character_id}/design/concepts/select")
+@series_chars_router.post("/{character_id}/design/concepts/select")
 async def select_concept(
     series_id: int,
     character_id: int,
@@ -299,7 +369,7 @@ async def select_concept(
 
 # ── Stage 4: Visual — Imagen 4.0 직접 생성 ─────────────────────────────────
 
-@router.post("/{character_id}/design/visual/generate")
+@series_chars_router.post("/{character_id}/design/visual/generate")
 async def generate_character_images(
     series_id: int,
     character_id: int,
@@ -369,7 +439,7 @@ async def generate_character_images(
                 raw = base64.b64decode(img_bytes) if isinstance(img_bytes, str) else img_bytes
                 filename = f"{slug}_c{character_id}_{i}.jpg"
                 (char_img_dir / filename).write_bytes(raw)
-                image_urls.append(f"/api/characters/{filename}")
+                image_urls.append(f"/api/character-images/{filename}")
                 logger.info(f"  이미지 {i+1}/4 생성 완료 ({len(raw)//1024}KB)")
             else:
                 errors.append(f"이미지 {i+1}: 빈 응답")
@@ -399,7 +469,7 @@ async def generate_character_images(
                     if img_bytes:
                         filename = f"{slug}_c{character_id}_{i}.jpg"
                         (char_img_dir / filename).write_bytes(img_bytes)
-                        image_urls.append(f"/api/characters/{filename}")
+                        image_urls.append(f"/api/character-images/{filename}")
                         logger.info(f"  [Fallback] 이미지 {i+1}/4 완료")
             except Exception as e:
                 logger.warning(f"  [Fallback] 이미지 {i+1}/4 실패: {e}")
@@ -424,7 +494,7 @@ class SaveImageUrlsRequest(BaseModel):
     image_urls: list[str]
 
 
-@router.post("/{character_id}/design/visual")
+@series_chars_router.post("/{character_id}/design/visual")
 async def save_image_urls(
     series_id: int,
     character_id: int,
@@ -452,7 +522,7 @@ class SelectImageRequest(BaseModel):
     index: int
 
 
-@router.post("/{character_id}/design/visual/select")
+@series_chars_router.post("/{character_id}/design/visual/select")
 async def select_image(
     series_id: int,
     character_id: int,
@@ -481,7 +551,7 @@ async def select_image(
 
 # ── Stage 5: Bible ─────────────────────────────────────────────────────────
 
-@router.post("/{character_id}/design/bible")
+@series_chars_router.post("/{character_id}/design/bible")
 async def run_bible(
     series_id: int,
     character_id: int,

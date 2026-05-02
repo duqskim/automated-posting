@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { api } from "@/lib/api";
+import AppShell from "@/components/AppShell";
 
 /* ─── 타입 ─────────────────────────────────────────────── */
 
@@ -101,6 +102,43 @@ const STEP_ORDER = ["idle", "research_done", "hooks_done", "write_done", "render
 
 function stepIndex(step: string) {
   return STEP_ORDER.indexOf(step);
+}
+
+// 전체 파이프라인 단계 메타데이터
+const PIPELINE_STEPS = [
+  { id: 1, label: "리서치",    short: "리서치",  minIdx: 0 },
+  { id: 2, label: "훅 선택",   short: "훅",      minIdx: 1 },
+  { id: 3, label: "글쓰기",    short: "글쓰기",  minIdx: 2 },
+  { id: 4, label: "이미지",    short: "이미지",  minIdx: 3 },
+  { id: 5, label: "영상",      short: "영상",    minIdx: 5 },
+  { id: 6, label: "발행",      short: "발행",    minIdx: 7 },
+];
+
+function PipelineProgress({ currentIdx }: { currentIdx: number }) {
+  return (
+    <div className="flex items-center gap-1 py-3 px-1 overflow-x-auto">
+      {PIPELINE_STEPS.map((s, i) => {
+        const done = currentIdx > s.minIdx;
+        const active = currentIdx === s.minIdx || (s.id === 5 && currentIdx === 6);
+        return (
+          <div key={s.id} className="flex items-center gap-1 flex-shrink-0">
+            <div className={`
+              flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-colors
+              ${done    ? "bg-green-500/15 text-green-600 border border-green-500/30" :
+                active  ? "bg-primary/15 text-primary border border-primary/30" :
+                          "bg-muted/30 text-muted-foreground border border-transparent"}
+            `}>
+              <span>{done ? "✓" : s.id}</span>
+              <span>{s.short}</span>
+            </div>
+            {i < PIPELINE_STEPS.length - 1 && (
+              <span className={`text-xs ${done ? "text-green-400" : "text-muted-foreground/30"}`}>→</span>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 /* ─── 메인 컴포넌트 ─────────────────────────────────────── */
@@ -454,54 +492,45 @@ export default function ProjectDetailPage() {
 
   if (!project) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-muted-foreground">로딩 중...</p>
-      </div>
+      <AppShell>
+        <div className="flex items-center justify-center h-full py-24 text-muted-foreground">로딩 중...</div>
+      </AppShell>
     );
   }
 
   const currentStepIdx = stepIndex(stage.current_step);
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* 헤더 */}
-      <header className="border-b sticky top-0 bg-background z-10">
-        <div className="container mx-auto flex items-center justify-between h-14 px-4">
-          <button onClick={() => router.push("/dashboard")} className="text-lg font-bold hover:opacity-80">
-            Automated Posting
-          </button>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-muted-foreground hover:text-red-500"
+    <AppShell>
+      <div className="max-w-3xl mx-auto px-4 py-6">
+        {/* 프로젝트 헤더 */}
+        <div className="mb-4">
+          <div className="flex items-center justify-between gap-3 mb-1">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="text-xl">{MARKET_FLAGS[project.market]}</span>
+              <h1 className="text-lg font-bold truncate">{project.topic}</h1>
+            </div>
+            <button
               onClick={async () => {
                 if (!confirm("프로젝트를 삭제하시겠습니까?")) return;
                 await api.projects.delete(projectId);
                 router.push("/dashboard");
               }}
+              className="flex-shrink-0 text-xs text-muted-foreground hover:text-red-500 transition-colors"
             >
               삭제
-            </Button>
-            <Button variant="ghost" size="sm" onClick={() => router.push("/dashboard")}>
-              목록으로
-            </Button>
+            </button>
           </div>
-        </div>
-      </header>
-
-      <div className="container mx-auto px-4 py-8 max-w-3xl">
-        {/* 프로젝트 헤더 */}
-        <div className="mb-8">
-          <div className="flex items-center gap-3 mb-2">
-            <span className="text-2xl">{MARKET_FLAGS[project.market]}</span>
-            <h1 className="text-2xl font-bold">{project.topic}</h1>
-          </div>
-          <div className="flex gap-2 flex-wrap">
+          <div className="flex gap-1.5 flex-wrap">
             {project.target_platforms?.map((p) => (
-              <Badge key={p} variant="outline">{p}</Badge>
+              <Badge key={p} variant="outline" className="text-xs">{p}</Badge>
             ))}
           </div>
+        </div>
+
+        {/* 전체 파이프라인 진행 상황 */}
+        <div className="border rounded-xl px-3 mb-6 bg-muted/10">
+          <PipelineProgress currentIdx={currentStepIdx} />
         </div>
 
         {/* 에러 */}
@@ -517,7 +546,7 @@ export default function ProjectDetailPage() {
           title="리서치"
           icon="🔍"
           done={currentStepIdx >= 1}
-          active={currentStepIdx >= 0}
+          active={currentStepIdx === 0}
         >
           {stage.research ? (
             <div className="space-y-4">
@@ -571,13 +600,14 @@ export default function ProjectDetailPage() {
         </StepCard>
 
         {/* ── Step 2: 훅 선택 ─────────────────────────────────── */}
-        {currentStepIdx >= 1 && (
-          <StepCard
+        <StepCard
             step={2}
             title="훅 선택"
             icon="🎣"
             done={currentStepIdx >= 2}
-            active={currentStepIdx >= 1}
+            active={currentStepIdx === 1}
+            locked={currentStepIdx < 1}
+            lockedMsg="리서치 완료 후 활성화됩니다."
           >
             {stage.hooks ? (
               <div className="space-y-4">
@@ -636,16 +666,16 @@ export default function ProjectDetailPage() {
               </Button>
             )}
           </StepCard>
-        )}
 
         {/* ── Step 3: 콘텐츠 확인/편집 ────────────────────────── */}
-        {currentStepIdx >= 2 && (
           <StepCard
             step={3}
             title="콘텐츠 확인 / 편집"
             icon="✍️"
             done={currentStepIdx >= 3}
-            active={currentStepIdx >= 2}
+            active={currentStepIdx === 2}
+            locked={currentStepIdx < 2}
+            lockedMsg="훅 선택 완료 후 활성화됩니다."
           >
             {stage.content ? (
               <div className="space-y-4">
@@ -863,16 +893,16 @@ export default function ProjectDetailPage() {
               </Button>
             )}
           </StepCard>
-        )}
 
         {/* ── Step 4: 씬 이미지 생성 ──────────────────────── */}
-        {currentStepIdx >= 3 && (
           <StepCard
             step={4}
             title="씬 이미지 생성"
             icon="🖼️"
             done={currentStepIdx >= 4}
-            active={currentStepIdx >= 3}
+            active={currentStepIdx === 3}
+            locked={currentStepIdx < 3}
+            lockedMsg="글쓰기 완료 후 활성화됩니다."
           >
             {/* 플랫폼 선택 (비율 결정) */}
             <div className="mb-4">
@@ -1068,15 +1098,16 @@ export default function ProjectDetailPage() {
               );
             })()}
           </StepCard>
-        )}
+
         {/* ── Step 5: 영상 제작 (Veo + TTS) ──────────────────── */}
-        {currentStepIdx >= 3 && (
           <StepCard
             step={5}
             title="영상 제작"
             icon="🎬"
-            done={stage.current_step === "video_done"}
-            active={currentStepIdx >= 3}
+            done={stage.current_step === "video_done" || currentStepIdx >= 7}
+            active={currentStepIdx >= 4 && currentStepIdx < 7}
+            locked={currentStepIdx < 4}
+            lockedMsg="이미지 생성 완료 후 활성화됩니다."
           >
             {stage.video?.status === "processing" ? (
               <div className="space-y-3">
@@ -1231,16 +1262,16 @@ export default function ProjectDetailPage() {
               </div>
             )}
           </StepCard>
-        )}
 
         {/* ── Step 6: 발행 ─────────────────────────────────────── */}
-        {currentStepIdx >= 3 && (
           <StepCard
             step={6}
             title="발행"
             icon="🚀"
             done={stage.current_step === "publish_done"}
             active={currentStepIdx >= 3}
+            locked={currentStepIdx < 3}
+            lockedMsg="글쓰기 완료 후 드라이런 발행이 가능합니다."
           >
             <div className="space-y-4">
               <div className="flex items-center gap-3">
@@ -1292,13 +1323,16 @@ export default function ProjectDetailPage() {
               </div>
             </div>
           </StepCard>
-        )}
       </div>
-    </div>
+    </AppShell>
   );
 }
 
 /* ─── StepCard 컴포넌트 ─────────────────────────────────── */
+// status: "done" | "active" | "locked"
+// done   → 접힘(기본), 헤더 클릭으로 펼치기
+// active → 항상 펼쳐짐, 강조 테두리
+// locked → 흐릿하게, 자물쇠 아이콘, 내용 미표시
 
 function StepCard({
   step,
@@ -1306,6 +1340,8 @@ function StepCard({
   icon,
   done,
   active,
+  locked,
+  lockedMsg,
   children,
 }: {
   step: number;
@@ -1313,14 +1349,25 @@ function StepCard({
   icon: string;
   done: boolean;
   active: boolean;
+  locked?: boolean;
+  lockedMsg?: string;
   children: React.ReactNode;
 }) {
+  const [expanded, setExpanded] = useState(!done);
+
+  // active가 되면 자동으로 펼쳐짐
+  useEffect(() => {
+    if (active && !done) setExpanded(true);
+  }, [active, done]);
+
+  const isLocked = locked && !done && !active;
+
   return (
-    <div className="mb-4 relative pl-10">
+    <div className="mb-3 relative pl-10">
       {/* 세로 연결선 */}
       <div className="absolute left-[18px] top-10 bottom-0 w-px bg-border" />
 
-      {/* 스텝 아이콘 */}
+      {/* 스텝 배지 */}
       <div className={`absolute left-0 top-4 w-9 h-9 rounded-full border-2 flex items-center justify-center text-sm font-bold z-10 ${
         done
           ? "bg-green-500 border-green-500 text-white"
@@ -1328,20 +1375,40 @@ function StepCard({
           ? "bg-primary border-primary text-white"
           : "bg-background border-border text-muted-foreground"
       }`}>
-        {done ? "✓" : icon}
+        {done ? "✓" : isLocked ? "○" : icon}
       </div>
 
-      <Card className={`ml-2 ${!active ? "opacity-50" : ""}`}>
-        <CardHeader className="pb-3 pt-4 px-5">
-          <CardTitle className="text-base flex items-center gap-2">
-            <span className="text-muted-foreground text-sm">Step {step}</span>
-            <span>{title}</span>
-            {done && <Badge variant="outline" className="text-green-600 border-green-500/40 text-xs ml-auto">완료</Badge>}
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="px-5 pb-5">
-          {children}
-        </CardContent>
+      <Card className={`ml-2 transition-opacity ${isLocked ? "opacity-40" : ""} ${active ? "border-primary/30" : ""}`}>
+        {/* 헤더 — done이면 클릭으로 접기/펼치기 */}
+        <div
+          className={`flex items-center justify-between px-5 py-3 ${done ? "cursor-pointer select-none hover:bg-muted/20" : ""}`}
+          onClick={() => done && setExpanded(e => !e)}
+        >
+          <div className="flex items-center gap-2">
+            <span className="text-muted-foreground text-xs font-medium">Step {step}</span>
+            <span className="font-semibold text-sm">{title}</span>
+            {done && (
+              <Badge variant="outline" className="text-green-600 border-green-500/40 text-xs">완료</Badge>
+            )}
+            {active && !done && (
+              <Badge className="text-xs py-0">진행 중</Badge>
+            )}
+          </div>
+          {done && (
+            <span className="text-muted-foreground text-xs">{expanded ? "▲ 접기" : "▼ 결과 보기"}</span>
+          )}
+        </div>
+
+        {/* 바디 */}
+        {isLocked ? (
+          <CardContent className="px-5 pb-4 pt-0">
+            <p className="text-xs text-muted-foreground">{lockedMsg ?? "이전 단계를 완료하면 활성화됩니다."}</p>
+          </CardContent>
+        ) : (expanded || active) ? (
+          <CardContent className="px-5 pb-5 pt-1 border-t">
+            {children}
+          </CardContent>
+        ) : null}
       </Card>
     </div>
   );

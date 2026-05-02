@@ -115,7 +115,7 @@ def _default_shots(body_slides: list[str], platform: str) -> list[ShotFrame]:
                 duration_target=per,
                 camera_start="eye level" if j == 0 else "low angle",
                 camera_movement="slow push forward" if j == 0 else "slow pan right",
-                subject_action=f"scene from: {text[:60]}",
+                subject_action="scene subjects move naturally, environmental elements shift",
                 physics_elements="ambient light",
                 emotional_arc="informative",
                 scene_id=f"slide_{i}_scene",

@@ -108,11 +108,14 @@ class SeriesEpisode(Base, TimestampMixin):
 
 
 class SeriesCharacter(Base, TimestampMixin):
-    """시리즈 전용 캐릭터 — 5단계 Character Design Studio 결과물"""
+    """캐릭터 — 5단계 Character Design Studio 결과물 (여러 시리즈에서 재활용 가능)"""
     __tablename__ = "series_characters"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    series_id: Mapped[int] = mapped_column(ForeignKey("content_series.id", ondelete="CASCADE"))
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    series_id: Mapped[int | None] = mapped_column(
+        ForeignKey("content_series.id", ondelete="SET NULL"), nullable=True
+    )
 
     # 상태: draft (설계 중) | active (완성)
     status: Mapped[str] = mapped_column(String(20), default="draft")
@@ -143,7 +146,8 @@ class SeriesCharacter(Base, TimestampMixin):
     design_session: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     # Relationships
-    series = relationship("ContentSeries", back_populates="characters")
+    user = relationship("User", foreign_keys=[user_id])
+    series = relationship("ContentSeries", back_populates="characters", foreign_keys=[series_id])
 
 
 class BrandProfile(Base, TimestampMixin):
