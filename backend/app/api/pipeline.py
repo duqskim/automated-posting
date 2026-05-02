@@ -59,6 +59,8 @@ class StageStateResponse(BaseModel):
     video: dict | None = None
     metadata: dict | None = None       # YouTube SEO 메타데이터 (MetadataAgent)
     thumbnail_spec: dict | None = None  # 썸네일 스펙 (ThumbnailAgent)
+    frame_motion_prompts: list[str] = []  # Kling AI 영상 모션 프롬프트
+    shot_script: dict | None = None       # 씬별 샷 플랜 (CinematicShotPlanner)
 
 
 class SelectHookRequest(BaseModel):
@@ -163,6 +165,8 @@ async def get_stage_state(
         video=video_out,
         metadata=sr.get("metadata"),
         thumbnail_spec=sr.get("thumbnail_spec"),
+        frame_motion_prompts=sr.get("frame_motion_prompts") or [],
+        shot_script=sr.get("shot_script"),
     )
 
 
@@ -270,16 +274,16 @@ async def run_stage_write(
     if not sr.get("hooks"):
         raise HTTPException(status_code=400, detail="훅 생성을 먼저 실행해주세요")
 
-    # fix_facts=True 이면 이전 팩트체크에서 disputed 항목만 추출
+    # fix_facts=True 이면 이전 팩트체크에서 disputed + uncertain 항목 모두 추출
     fact_corrections = None
     if body.fix_facts and sr.get("fact_check"):
-        disputed = [
+        to_fix = [
             c for c in sr["fact_check"].get("claims", [])
-            if c.get("status") == "disputed"
+            if c.get("status") in ("disputed", "uncertain")
         ]
-        if disputed:
-            fact_corrections = disputed
-            logger.info(f"[write] 팩트 기반 재작성 — 수정 항목 {len(disputed)}개")
+        if to_fix:
+            fact_corrections = to_fix
+            logger.info(f"[write] 팩트 기반 재작성 — 수정 항목 {len(to_fix)}개 (disputed+uncertain)")
 
     controller = PipelineController(project.market)
     platforms = project.target_platforms or controller.profile.active_platforms

@@ -136,14 +136,21 @@ class CopywriterAgent:
 
         fact_correction_prompt = ""
         if fact_corrections:
-            lines = "\n".join(
-                f'- "{c["claim"]}" → {c["note"]}'
+            disputed_lines = "\n".join(
+                f'- [오류] "{c["claim"]}" → {c["note"]}'
                 for c in fact_corrections
                 if c.get("status") == "disputed"
             )
-            if lines:
+            uncertain_lines = "\n".join(
+                f'- [불확실] "{c["claim"]}" → 수치를 삭제하거나 "~로 알려져 있다" 수준으로 완화할 것'
+                for c in fact_corrections
+                if c.get("status") == "uncertain"
+            )
+            combined = "\n".join(filter(None, [disputed_lines, uncertain_lines]))
+            if combined:
                 fact_correction_prompt = (
-                    f"\n\n[FACT CORRECTIONS — 이전 팩트체크에서 발견된 오류. 반드시 수정해서 작성할 것]\n{lines}"
+                    f"\n\n[FACT CORRECTIONS — 반드시 반영할 것]\n"
+                    f"오류 항목은 수정, 불확실 항목은 수치 제거 또는 완화:\n{combined}"
                 )
 
         character_prompt = ""
@@ -265,18 +272,20 @@ Rules:
         logger.info(f"=== Copywriter Agent: '{research.topic}' 콘텐츠 생성 ===")
         logger.info(f"타겟 플랫폼: {', '.join(target_platforms)}")
 
-        # 추천 훅 선택
+        # 사용자가 선택한 훅 (recommended_hook_index = selectHook에서 설정한 인덱스)
         best_hook = hook_result.hooks[hook_result.recommended_hook_index]
 
         # 플랫폼별 독립 생성
         platform_contents = []
         for platform in target_platforms:
-            # 플랫폼에 가장 적합한 훅 선택
-            platform_hook = best_hook.text
-            for hook in hook_result.hooks:
-                if platform in hook.platform_fit:
-                    platform_hook = hook.text
-                    break
+            # 선택한 훅이 해당 플랫폼에 맞으면 그대로, 아니면 플랫폼 적합 훅 중 선택
+            if not best_hook.platform_fit or platform in best_hook.platform_fit:
+                platform_hook = best_hook.text
+            else:
+                platform_hook = next(
+                    (h.text for h in hook_result.hooks if platform in h.platform_fit),
+                    best_hook.text,  # 없으면 선택한 훅 그대로 사용
+                )
 
             logger.info(f"  [{platform}] 생성 중... (훅: {platform_hook[:30]}...)")
             content = await self._generate_platform_content(

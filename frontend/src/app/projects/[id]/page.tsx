@@ -73,6 +73,8 @@ interface StageState {
   } | null;
   image_urls: string[];
   image_prompts: string[];
+  frame_motion_prompts: string[];
+  shot_script: Record<string, unknown> | null;
   thumbnail_url: string | null;
   quality_score: number | null;
   quality_status: string | null;
@@ -158,6 +160,8 @@ export default function ProjectDetailPage() {
     content: null,
     image_urls: [],
     image_prompts: [],
+    frame_motion_prompts: [],
+    shot_script: null,
     thumbnail_url: null,
     quality_score: null,
     quality_status: null,
@@ -171,6 +175,7 @@ export default function ProjectDetailPage() {
   const [publishPlatform, setPublishPlatform] = useState("youtube");
   const [publishResult, setPublishResult] = useState<{ results: { platform: string; success: boolean; post_url?: string; error?: string }[] } | null>(null);
   const [loading, setLoading] = useState<string | null>(null); // 로딩 중인 스텝 이름
+  const [writeStep, setWriteStep] = useState<string>("");
   const [error, setError] = useState("");
   const [videoLog, setVideoLog] = useState<{ lines: string[]; step: string } | null>(null);
 
@@ -290,9 +295,23 @@ export default function ProjectDetailPage() {
 
   const runWrite = async (fixFacts = false) => {
     setLoading(fixFacts ? "write_fix" : "write");
+    setWriteStep("선택한 훅 분석 중...");
     setError("");
+
+    // 단계별 상태 메시지 (시간 기반)
+    const writeSteps = [
+      [3000,  "플랫폼별 콘텐츠 작성 중..."],
+      [20000, "품질 검수 중..."],
+      [35000, "팩트 체크 중 (Google 검색)..."],
+      [55000, "마무리 중..."],
+    ] as const;
+    const timers = writeSteps.map(([ms, msg]) =>
+      setTimeout(() => setWriteStep(msg), ms)
+    );
+
     try {
       const res = await api.pipeline.runWrite(projectId, fixFacts);
+      timers.forEach(clearTimeout);
       setStage(prev => ({
         ...prev,
         current_step: "write_done",
@@ -303,8 +322,10 @@ export default function ProjectDetailPage() {
       }));
       await loadProject();
     } catch (e: unknown) {
+      timers.forEach(clearTimeout);
       setError(e instanceof Error ? e.message : "글쓰기 실패");
     } finally {
+      setWriteStep("");
       setLoading(null);
     }
   };
@@ -659,7 +680,7 @@ export default function ProjectDetailPage() {
                   </Button>
                   {currentStepIdx < 3 && (
                     <Button size="sm" onClick={() => runWrite(false)} disabled={!!loading}>
-                      {loading === "write" ? "글쓰기 중... (1분 소요)" : "이 훅으로 글쓰기 →"}
+                      {loading === "write" ? (writeStep || "글쓰기 중...") : "이 훅으로 글쓰기 →"}
                     </Button>
                   )}
                 </div>
@@ -740,17 +761,19 @@ export default function ProjectDetailPage() {
                           <div className="text-muted-foreground">{c.note}</div>
                         </div>
                       ))}
-                      {stage.fact_check.disputed_count > 0 && (
+                      {(stage.fact_check.disputed_count > 0 || stage.fact_check.uncertain_count > 0) && (
                         <Button
                           size="sm"
-                          variant="destructive"
+                          variant={stage.fact_check.disputed_count > 0 ? "destructive" : "outline"}
                           className="mt-2 w-full"
                           onClick={() => runWrite(true)}
                           disabled={!!loading}
                         >
                           {loading === "write_fix"
-                            ? "팩트 수정 후 재작성 중..."
-                            : `오류 ${stage.fact_check.disputed_count}개 수정 후 재작성`}
+                            ? (writeStep || "팩트 수정 후 재작성 중...")
+                            : stage.fact_check.disputed_count > 0
+                              ? `오류 ${stage.fact_check.disputed_count}개 + 불확실 ${stage.fact_check.uncertain_count}개 수정 후 재작성`
+                              : `불확실 수치 ${stage.fact_check.uncertain_count}개 제거 후 재작성`}
                         </Button>
                       )}
                     </div>
@@ -863,6 +886,23 @@ export default function ProjectDetailPage() {
                         </div>
                       )}
 
+                      {/* 이미지 방향 프롬프트 뷰어 (글쓰기 단계) */}
+                      {!editingPlatform && (pc.image_prompts?.length ?? 0) > 0 && (
+                        <details className="mt-3 border rounded-lg overflow-hidden">
+                          <summary className="px-3 py-2 bg-purple-500/5 border-purple-500/10 text-xs font-medium cursor-pointer hover:bg-purple-500/10 select-none text-purple-400">
+                            🎨 이미지 방향 프롬프트 ({pc.image_prompts!.length}개)
+                          </summary>
+                          <div className="divide-y max-h-48 overflow-y-auto">
+                            {pc.image_prompts!.map((p, k) => (
+                              <div key={k} className="px-3 py-2 bg-muted/10 flex gap-2">
+                                <span className="text-xs text-muted-foreground font-mono shrink-0">{k+1}</span>
+                                <span className="text-xs text-muted-foreground break-all">{p}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </details>
+                      )}
+
                       {/* CTA + 해시태그 */}
                       <div className="mt-3 flex flex-wrap gap-2 items-center">
                         {pc.cta && (
@@ -882,7 +922,7 @@ export default function ProjectDetailPage() {
 
                 <div className="flex gap-2">
                   <Button size="sm" onClick={() => runWrite(false)} disabled={!!loading} variant="outline">
-                    {loading === "write" ? "재작성 중..." : "다시 작성"}
+                    {loading === "write" ? (writeStep || "재작성 중...") : "다시 작성"}
                   </Button>
                   {currentStepIdx < 4 && (
                     <Button size="sm" onClick={() => runRender(videoPlatform)} disabled={!!loading}>
@@ -893,7 +933,7 @@ export default function ProjectDetailPage() {
               </div>
             ) : (
               <Button onClick={() => runWrite(false)} disabled={!!loading}>
-                {loading === "write" ? "글쓰기 중... (1분 소요)" : "글쓰기 시작"}
+                {loading === "write" ? (writeStep || "글쓰기 중...") : "글쓰기 시작"}
               </Button>
             )}
           </StepCard>
@@ -1072,6 +1112,23 @@ export default function ProjectDetailPage() {
                     </div>
                   )}
 
+                  {/* 이미지 프롬프트 뷰어 */}
+                  {stage.image_prompts.length > 0 && (
+                    <details className="mt-2 border rounded-lg overflow-hidden">
+                      <summary className="px-3 py-2 bg-muted/30 text-xs font-medium cursor-pointer hover:bg-muted/50 select-none">
+                        🎨 Imagen 프롬프트 보기 ({stage.image_prompts.length}개)
+                      </summary>
+                      <div className="divide-y">
+                        {stage.image_prompts.map((p, k) => (
+                          <div key={k} className="px-3 py-2 bg-muted/10">
+                            <span className="text-xs text-muted-foreground font-mono mr-2">씬 {k+1}</span>
+                            <span className="text-xs font-mono break-all">{p}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </details>
+                  )}
+
                   <Button
                     size="sm"
                     onClick={() => runRender(videoPlatform)}
@@ -1188,6 +1245,23 @@ export default function ProjectDetailPage() {
                     </div>
                   )}
                 </div>
+
+                {/* 영상 모션 프롬프트 뷰어 */}
+                {stage.frame_motion_prompts.length > 0 && (
+                  <details className="border rounded-lg overflow-hidden">
+                    <summary className="px-3 py-2 bg-muted/30 text-xs font-medium cursor-pointer hover:bg-muted/50 select-none">
+                      🎬 Kling AI 모션 프롬프트 보기 ({stage.frame_motion_prompts.length}개 샷)
+                    </summary>
+                    <div className="divide-y max-h-64 overflow-y-auto">
+                      {stage.frame_motion_prompts.map((p, k) => (
+                        <div key={k} className="px-3 py-2 bg-muted/10">
+                          <span className="text-xs text-muted-foreground font-mono mr-2">샷 {k+1}</span>
+                          <span className="text-xs font-mono break-all">{p}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </details>
+                )}
 
                 <Button size="sm" onClick={runVideo} disabled={!!loading} variant="outline">
                   {loading === "video" ? "재생성 중... (5~10분)" : "영상 재생성"}
