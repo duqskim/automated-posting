@@ -419,8 +419,7 @@ async def rewrite_image_prompt(
         else f"Cinematic scene: {target.body[body.slide_index][:80]}"
     )
 
-    character = await _load_series_character(project, db)
-    character_dict = character.model_dump() if character else None
+    character_dict = await _load_series_character(project, db)
 
     try:
         new_prompt = await rewrite_prompt(
@@ -546,8 +545,7 @@ async def run_stage_render(
     if not sr.get("content"):
         raise HTTPException(status_code=400, detail="글쓰기를 먼저 실행해주세요")
 
-    character = await _load_series_character(project, db)
-    character_dict = character.model_dump() if character else None
+    character_dict = await _load_series_character(project, db)
 
     # Celery 작업 디스패치 (Redis 있을 때) — 즉시 반환
     if ASYNC_MODE:
