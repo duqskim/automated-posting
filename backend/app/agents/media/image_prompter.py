@@ -156,6 +156,81 @@ Return ONLY the JSON object, no explanation."""
         return result
 
 
+async def rewrite_prompt(
+    current_prompt: str,
+    correction_intent: str,
+    slide_text: str,
+    topic: str = "",
+    character: dict | None = None,
+) -> str:
+    """
+    이미지 프롬프트 협업 수정
+
+    사용자의 수정 의도(correction_intent)를 반영해 현재 프롬프트를 다시 씁니다.
+
+    Args:
+        current_prompt: 현재 Imagen 4 프롬프트 (영문)
+        correction_intent: 사용자 수정 요청 (자유 언어 — 한국어/영어 모두 가능)
+        slide_text: 해당 슬라이드 원문 (컨텍스트용)
+        topic: 전체 콘텐츠 주제
+        character: 캐릭터 정보 (일관성 유지용)
+
+    Returns:
+        수정된 Imagen 4 프롬프트 (영문)
+    """
+    from google import genai
+    from google.genai import types
+
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        raise ValueError("GEMINI_API_KEY 없음")
+
+    client = genai.Client(api_key=api_key)
+
+    char_note = ""
+    if character:
+        char_name = character.get("name", "")
+        char_ref = character.get("reference_image_url", "")
+        bible = character.get("bible") or {}
+        char_visual = bible.get("visual_description") or character.get("visual_description", "")
+        if char_name or char_visual:
+            char_note = f"\nCharacter to maintain: {char_name} — {char_visual}"
+            if char_ref:
+                char_note += f"\nReference URL: {char_ref}"
+
+    prompt = f"""You are an expert Imagen 4 prompt engineer doing a targeted rewrite.
+
+Topic: "{topic}"
+Slide text: "{slide_text[:200]}"
+{char_note}
+
+Current prompt:
+{current_prompt}
+
+User's correction request: "{correction_intent}"
+
+Rewrite the prompt to incorporate the correction while preserving:
+- The same scene/setting and historical accuracy
+- The same mandatory style suffix (cinematic photorealistic, Korean historical drama aesthetic, etc.)
+- The same composition structure (camera angle, lighting, atmosphere)
+- Only change what the user specifically asked for
+
+Return ONLY the rewritten prompt in English (60-100 words). No explanation, no JSON, just the prompt text."""
+
+    try:
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt,
+            config=types.GenerateContentConfig(temperature=0.5),
+        )
+        rewritten = response.text.strip().strip('"').strip()
+        logger.info(f"[ImagePrompter] 프롬프트 재작성 완료 ({len(rewritten)}자)")
+        return rewritten
+    except Exception as e:
+        logger.error(f"[ImagePrompter] 재작성 실패: {e}")
+        return current_prompt
+
+
 async def generate_multiframe_prompts(
     topic: str,
     shot_script,        # ShotScript (imported lazily to avoid circular deps)

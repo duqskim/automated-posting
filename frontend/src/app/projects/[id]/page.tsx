@@ -70,8 +70,10 @@ interface StageState {
     platform_contents: PlatformContent[];
   } | null;
   image_urls: string[];
+  image_prompts: string[];
   thumbnail_url: string | null;
   quality_score: number | null;
+  quality_status: string | null;
   fact_check: {
     verified: boolean;
     disputed_count: number;
@@ -116,8 +118,10 @@ export default function ProjectDetailPage() {
     selected_hook_index: 0,
     content: null,
     image_urls: [],
+    image_prompts: [],
     thumbnail_url: null,
     quality_score: null,
+    quality_status: null,
     fact_check: null,
     video: null,
   });
@@ -135,6 +139,15 @@ export default function ProjectDetailPage() {
   const [editedImagePrompts, setEditedImagePrompts] = useState<string[]>([]);
   const [savingSlides, setSavingSlides] = useState(false);
   const [expandedPrompts, setExpandedPrompts] = useState<Record<string, boolean>>({});
+
+  // 이미지 프롬프트 협업 수정 상태
+  const [rewritePanel, setRewritePanel] = useState<{
+    slideIndex: number;
+    correctionIntent: string;
+    rewrittenPrompt: string | null;
+    originalPrompt: string;
+    loading: boolean;
+  } | null>(null);
 
   /* ─── 로드 ─────────────────────────────────────────────── */
 
@@ -324,6 +337,69 @@ export default function ProjectDetailPage() {
       setError(e instanceof Error ? e.message : `슬라이드 ${slideIndex + 1} 재생성 실패`);
     } finally {
       setLoading(null);
+    }
+  };
+
+  const requestRewrite = async () => {
+    if (!rewritePanel || !rewritePanel.correctionIntent.trim()) return;
+    setRewritePanel(prev => prev ? { ...prev, loading: true } : prev);
+    try {
+      const res = await api.pipeline.rewritePrompt(
+        projectId,
+        rewritePanel.slideIndex,
+        rewritePanel.correctionIntent,
+        videoPlatform,
+      );
+      setRewritePanel(prev => prev ? { ...prev, rewrittenPrompt: res.rewritten_prompt, loading: false } : prev);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "프롬프트 재작성 실패");
+      setRewritePanel(prev => prev ? { ...prev, loading: false } : prev);
+    }
+  };
+
+  const confirmRewrite = async () => {
+    if (!rewritePanel?.rewrittenPrompt) return;
+    setRewritePanel(prev => prev ? { ...prev, loading: true } : prev);
+    try {
+      const res = await api.pipeline.confirmPrompt(
+        projectId,
+        rewritePanel.slideIndex,
+        rewritePanel.rewrittenPrompt,
+        videoPlatform,
+        true,
+      );
+      if (res.image_url) {
+        const bustUrl = `${res.image_url}?t=${Date.now()}`;
+        setStage(prev => {
+          const urls = [...prev.image_urls];
+          urls[rewritePanel.slideIndex] = bustUrl;
+          return { ...prev, image_urls: urls };
+        });
+      }
+      // content의 image_prompts도 업데이트
+      setStage(prev => {
+        if (!prev.content) return prev;
+        return {
+          ...prev,
+          content: {
+            ...prev.content,
+            platform_contents: prev.content.platform_contents.map((pc, i) =>
+              i === 0
+                ? {
+                    ...pc,
+                    image_prompts: pc.image_prompts?.map((p, k) =>
+                      k === rewritePanel.slideIndex ? rewritePanel.rewrittenPrompt! : p
+                    ) ?? pc.image_prompts,
+                  }
+                : pc
+            ),
+          },
+        };
+      });
+      setRewritePanel(null);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "프롬프트 확정 실패");
+      setRewritePanel(prev => prev ? { ...prev, loading: false } : prev);
     }
   };
 
@@ -821,14 +897,90 @@ export default function ProjectDetailPage() {
                       {/* 씬 헤더 */}
                       <div className="flex items-center justify-between px-3 py-2 bg-muted/30 border-b">
                         <span className="text-xs text-muted-foreground font-mono">씬 {k + 1}</span>
-                        <button
-                          onClick={() => regenerateImage(k)}
-                          disabled={!!loading}
-                          className="text-xs text-primary hover:underline disabled:opacity-50"
-                        >
-                          {loading === `regen_${k}` ? "재생성 중..." : "🔄 재생성"}
-                        </button>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => {
+                              const currentPrompt = renderPc?.image_prompts?.[k] ?? "";
+                              setRewritePanel({
+                                slideIndex: k,
+                                correctionIntent: "",
+                                rewrittenPrompt: null,
+                                originalPrompt: currentPrompt,
+                                loading: false,
+                              });
+                            }}
+                            disabled={!!loading}
+                            className="text-xs text-purple-400 hover:underline disabled:opacity-50"
+                          >
+                            ✏️ 프롬프트 수정
+                          </button>
+                          <button
+                            onClick={() => regenerateImage(k)}
+                            disabled={!!loading}
+                            className="text-xs text-primary hover:underline disabled:opacity-50"
+                          >
+                            {loading === `regen_${k}` ? "재생성 중..." : "🔄 재생성"}
+                          </button>
+                        </div>
                       </div>
+
+                      {/* 프롬프트 협업 수정 패널 */}
+                      {rewritePanel?.slideIndex === k && (
+                        <div className="px-3 py-3 bg-purple-500/5 border-b border-purple-500/20 space-y-2">
+                          <div className="text-xs font-medium text-purple-400">프롬프트 협업 수정</div>
+                          {rewritePanel.originalPrompt && (
+                            <div className="text-xs text-muted-foreground bg-muted/30 rounded p-2 break-words">
+                              <span className="font-medium">현재:</span> {rewritePanel.originalPrompt}
+                            </div>
+                          )}
+                          <input
+                            className="w-full text-xs border rounded px-2 py-1.5 bg-background focus:outline-none focus:ring-1 focus:ring-purple-500"
+                            placeholder="수정 요청 입력 (예: 더 어둡게, 카메라를 낮게, make it more dramatic)"
+                            value={rewritePanel.correctionIntent}
+                            onChange={e => setRewritePanel(prev => prev ? { ...prev, correctionIntent: e.target.value } : prev)}
+                            onKeyDown={e => e.key === "Enter" && requestRewrite()}
+                          />
+                          {rewritePanel.rewrittenPrompt && (
+                            <div className="text-xs text-green-400 bg-green-500/5 rounded p-2 break-words">
+                              <span className="font-medium">재작성:</span> {rewritePanel.rewrittenPrompt}
+                            </div>
+                          )}
+                          <div className="flex gap-2">
+                            {!rewritePanel.rewrittenPrompt ? (
+                              <button
+                                onClick={requestRewrite}
+                                disabled={rewritePanel.loading || !rewritePanel.correctionIntent.trim()}
+                                className="text-xs px-3 py-1 rounded bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-50"
+                              >
+                                {rewritePanel.loading ? "재작성 중..." : "AI 재작성"}
+                              </button>
+                            ) : (
+                              <>
+                                <button
+                                  onClick={confirmRewrite}
+                                  disabled={rewritePanel.loading}
+                                  className="text-xs px-3 py-1 rounded bg-green-600 text-white hover:bg-green-700 disabled:opacity-50"
+                                >
+                                  {rewritePanel.loading ? "적용 중..." : "확정 + 이미지 재생성"}
+                                </button>
+                                <button
+                                  onClick={() => setRewritePanel(prev => prev ? { ...prev, rewrittenPrompt: null } : prev)}
+                                  className="text-xs px-3 py-1 rounded border hover:bg-muted"
+                                >
+                                  다시 수정
+                                </button>
+                              </>
+                            )}
+                            <button
+                              onClick={() => setRewritePanel(null)}
+                              className="text-xs px-3 py-1 rounded border hover:bg-muted ml-auto"
+                            >
+                              닫기
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
                       {/* 이미지 + 텍스트 */}
                       <div className="flex">
                         <img

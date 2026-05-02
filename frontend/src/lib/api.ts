@@ -114,6 +114,20 @@ export const api = {
         body: JSON.stringify({ platform }),
       }),
 
+    /** 이미지 프롬프트 AI 재작성 (Step 1: 미리보기) */
+    rewritePrompt: (projectId: number, slideIndex: number, correctionIntent: string, platform: string = "youtube") =>
+      apiFetch(`/api/pipeline/${projectId}/stage/prompts/rewrite`, {
+        method: "POST",
+        body: JSON.stringify({ slide_index: slideIndex, correction_intent: correctionIntent, platform }),
+      }),
+
+    /** 이미지 프롬프트 확정 + 재생성 (Step 2: 확정) */
+    confirmPrompt: (projectId: number, slideIndex: number, prompt: string, platform: string = "youtube", regenerate: boolean = true) =>
+      apiFetch(`/api/pipeline/${projectId}/stage/prompts/${slideIndex}`, {
+        method: "PATCH",
+        body: JSON.stringify({ prompt, platform, regenerate }),
+      }),
+
     /** Stage 7: 영상 제작 (Veo + TTS + moviepy + BGM) */
     getLog: (projectId: number) =>
       apiFetch(`/api/pipeline/${projectId}/stage/log`),

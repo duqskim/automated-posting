@@ -51,6 +51,7 @@ class StageStateResponse(BaseModel):
     selected_hook_index: int = 0
     content: dict | None = None
     image_urls: list[str] = []
+    image_prompts: list[str] = []      # 슬라이드별 현재 이미지 프롬프트 (협업 수정용)
     thumbnail_url: str | None = None
     quality_score: float | None = None
     quality_status: str | None = None  # "pass" | "warn" | "block"
@@ -139,6 +140,14 @@ async def get_stage_state(
 
     render_type = sr.get("images_render_type", "scene")
 
+    # 플랫폼 첫 번째 콘텐츠에서 image_prompts 추출
+    image_prompts: list[str] = []
+    content_data = sr.get("content")
+    if content_data:
+        platform_contents = content_data.get("platform_contents", [])
+        if platform_contents:
+            image_prompts = platform_contents[0].get("image_prompts") or []
+
     return StageStateResponse(
         current_step=_current_step(sr),
         research=sr.get("research"),
@@ -146,6 +155,7 @@ async def get_stage_state(
         selected_hook_index=sr.get("selected_hook_index", 0),
         content=sr.get("content"),
         image_urls=_image_urls_from_paths(images, render_type),
+        image_prompts=image_prompts,
         thumbnail_url=sr.get("thumbnail_url"),
         quality_score=sr.get("quality_score"),
         quality_status=sr.get("quality_status"),
@@ -347,6 +357,166 @@ async def save_slides(
     await db.commit()
 
     return {"platform": body.platform, "slides_count": len(body.slides)}
+
+
+# ─── 이미지 프롬프트 협업 수정 ─────────────────────────────────
+
+class PromptRewriteRequest(BaseModel):
+    slide_index: int
+    correction_intent: str        # 사용자 수정 요청 (한국어/영어 모두 가능)
+    platform: str = "youtube"
+
+
+class PromptPatchRequest(BaseModel):
+    prompt: str                   # 확정된 프롬프트
+    platform: str = "youtube"
+    regenerate: bool = True       # True면 이미지 즉시 재생성
+
+
+@router.post("/{project_id}/stage/prompts/rewrite")
+async def rewrite_image_prompt(
+    project_id: int,
+    body: PromptRewriteRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    이미지 프롬프트 협업 수정 (Step 1: AI 재작성)
+
+    사용자가 수정 의도를 입력하면 AI가 현재 프롬프트를 재작성해 반환합니다.
+    반환된 프롬프트는 사용자 확인 후 PATCH /stage/prompts/{slide_index}로 확정합니다.
+    """
+    from app.agents.media.image_prompter import rewrite_prompt
+    from app.agents.pipeline import content_plan_from_dict
+
+    project = await _get_user_project(project_id, current_user.id, db)
+    sr = project.stage_results or {}
+
+    if not sr.get("content"):
+        raise HTTPException(status_code=400, detail="글쓰기를 먼저 실행해주세요")
+
+    content_plan = content_plan_from_dict(sr["content"])
+    target = next(
+        (pc for pc in content_plan.platform_contents if pc.platform == body.platform),
+        content_plan.platform_contents[0] if content_plan.platform_contents else None,
+    )
+    if not target:
+        raise HTTPException(status_code=400, detail="콘텐츠 플랜 없음")
+    if body.slide_index >= len(target.body):
+        raise HTTPException(status_code=400, detail="슬라이드 인덱스 초과")
+
+    # 현재 저장된 프롬프트 가져오기
+    image_prompts: list[str] = target.image_prompts or []
+    current_prompt = (
+        image_prompts[body.slide_index]
+        if body.slide_index < len(image_prompts)
+        else f"Cinematic scene: {target.body[body.slide_index][:80]}"
+    )
+
+    character = await _load_series_character(project, db)
+    character_dict = character.model_dump() if character else None
+
+    try:
+        new_prompt = await rewrite_prompt(
+            current_prompt=current_prompt,
+            correction_intent=body.correction_intent,
+            slide_text=target.body[body.slide_index],
+            topic=project.topic,
+            character=character_dict,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"프롬프트 재작성 실패: {e}")
+
+    return {
+        "slide_index": body.slide_index,
+        "original_prompt": current_prompt,
+        "rewritten_prompt": new_prompt,
+        "correction_intent": body.correction_intent,
+    }
+
+
+@router.patch("/{project_id}/stage/prompts/{slide_index}")
+async def confirm_image_prompt(
+    project_id: int,
+    slide_index: int,
+    body: PromptPatchRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    이미지 프롬프트 협업 수정 (Step 2: 확정 + 선택적 재생성)
+
+    사용자가 확정한 프롬프트를 저장하고, regenerate=True면 이미지를 즉시 재생성합니다.
+    """
+    from app.agents.pipeline import content_plan_from_dict, _make_slug
+    from app.agents.media.image_generation import generate_scene_image, SCENES_DIR, PLATFORM_ASPECT
+
+    project = await _get_user_project(project_id, current_user.id, db)
+    sr = project.stage_results or {}
+
+    if not sr.get("content"):
+        raise HTTPException(status_code=400, detail="글쓰기를 먼저 실행해주세요")
+
+    content = sr["content"]
+    platform_contents = content.get("platform_contents", [])
+
+    # 해당 플랫폼 콘텐츠에서 image_prompts 업데이트
+    updated = False
+    for pc in platform_contents:
+        if pc.get("platform") == body.platform:
+            prompts = list(pc.get("image_prompts") or [])
+            while len(prompts) <= slide_index:
+                prompts.append("")
+            prompts[slide_index] = body.prompt
+            pc["image_prompts"] = prompts
+            updated = True
+            break
+
+    if not updated:
+        raise HTTPException(status_code=404, detail=f"플랫폼 '{body.platform}'을 찾을 수 없습니다")
+
+    content["platform_contents"] = platform_contents
+    sr = dict(sr)
+    sr["content"] = content
+
+    image_url: str | None = None
+
+    # 즉시 이미지 재생성
+    if body.regenerate:
+        content_plan = content_plan_from_dict(content)
+        target = next((pc for pc in content_plan.platform_contents if pc.platform == body.platform), None)
+        if target and slide_index < len(target.body):
+            slug = _make_slug(project.topic)
+            path = SCENES_DIR / f"{slug}_{body.platform}_{slide_index:02d}.jpg"
+            aspect_ratio = PLATFORM_ASPECT.get(body.platform, "16:9")
+            try:
+                result = await generate_scene_image(
+                    slide_text=target.body[slide_index],
+                    image_prompt=body.prompt,
+                    output_path=path,
+                    topic=project.topic,
+                    language=PipelineController(project.market).profile.language,
+                    aspect_ratio=aspect_ratio,
+                )
+                if result:
+                    images = list(sr.get("images", []))
+                    while len(images) <= slide_index:
+                        images.append("")
+                    images[slide_index] = str(result)
+                    sr["images"] = images
+                    image_url = f"/api/scenes/{Path(result).name}"
+            except Exception as e:
+                logger.warning(f"[prompts] 이미지 재생성 실패 (프롬프트는 저장됨): {e}")
+
+    project.stage_results = sr
+    await db.commit()
+
+    return {
+        "slide_index": slide_index,
+        "prompt_saved": True,
+        "image_regenerated": body.regenerate and image_url is not None,
+        "image_url": image_url,
+    }
 
 
 class RenderRequest(BaseModel):
