@@ -1136,9 +1136,10 @@ export default function ProjectDetailPage() {
                           <div className="text-sm leading-relaxed whitespace-pre-wrap">
                             {renderPc?.body[k] ?? ""}
                           </div>
-                          {renderPc?.image_prompts?.[k] && (
-                            <div className="text-xs text-purple-400 bg-purple-500/5 rounded p-2 break-words">
-                              🎨 {renderPc.image_prompts[k]}
+                          {/* 실제 Imagen 프롬프트 (씬 기준, stage.image_prompts와 1:1 대응) */}
+                          {stage.image_prompts[k] && (
+                            <div className="text-xs text-purple-400 bg-purple-500/5 rounded p-2 break-words font-mono">
+                              🎨 {stage.image_prompts[k]}
                             </div>
                           )}
                         </div>
@@ -1160,23 +1161,6 @@ export default function ProjectDetailPage() {
                         style={{ maxHeight: "200px" }}
                       />
                     </div>
-                  )}
-
-                  {/* 이미지 프롬프트 뷰어 */}
-                  {stage.image_prompts.length > 0 && (
-                    <details className="mt-2 border rounded-lg overflow-hidden">
-                      <summary className="px-3 py-2 bg-muted/30 text-xs font-medium cursor-pointer hover:bg-muted/50 select-none">
-                        🎨 Imagen 프롬프트 보기 ({stage.image_prompts.length}개)
-                      </summary>
-                      <div className="divide-y">
-                        {stage.image_prompts.map((p, k) => (
-                          <div key={k} className="px-3 py-2 bg-muted/10">
-                            <span className="text-xs text-muted-foreground font-mono mr-2">씬 {k+1}</span>
-                            <span className="text-xs font-mono break-all">{p}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </details>
                   )}
 
                   <Button
