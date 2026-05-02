@@ -176,6 +176,7 @@ export default function ProjectDetailPage() {
   const [publishResult, setPublishResult] = useState<{ results: { platform: string; success: boolean; post_url?: string; error?: string }[] } | null>(null);
   const [loading, setLoading] = useState<string | null>(null); // 로딩 중인 스텝 이름
   const [writeStep, setWriteStep] = useState<string>("");
+  const [imageStep, setImageStep] = useState<string>("");
   const [error, setError] = useState("");
   const [videoLog, setVideoLog] = useState<{ lines: string[]; step: string } | null>(null);
 
@@ -366,20 +367,62 @@ export default function ProjectDetailPage() {
 
   const runRender = async (platform: string = videoPlatform) => {
     setLoading("render");
+    setImageStep("이미지 프롬프트 준비 중...");
     setError("");
+
+    // 시간 기반 단계 메시지 (슬라이드 25개 기준 약 3~6분)
+    const imageSteps: [number, string][] = [
+      [5000,   "씬 1~5 이미지 생성 중..."],
+      [50000,  "씬 6~10 이미지 생성 중..."],
+      [100000, "씬 11~15 이미지 생성 중..."],
+      [150000, "씬 16~20 이미지 생성 중..."],
+      [200000, "씬 21~25 이미지 생성 중..."],
+      [260000, "썸네일 생성 중..."],
+      [290000, "마무리 중..."],
+    ];
+    const stepTimers = imageSteps.map(([ms, msg]) => setTimeout(() => setImageStep(msg), ms));
+
     try {
       const res = await api.pipeline.runRender(projectId, platform, imageProvider);
-      setStage(prev => ({
-        ...prev,
-        current_step: "render_done",
-        image_urls: (res.image_urls as string[]).map((u: string) => `${u}?t=${Date.now()}`),
-        thumbnail_url: res.thumbnail_url ?? prev.thumbnail_url,
-      }));
+
+      // 비동기 모드(Celery): render_processing 반환 → 완료될 때까지 폴링
+      if (res.step === "render_processing") {
+        setImageStep("Celery 작업 처리 중... 완료까지 대기 중");
+        const poll = async (): Promise<void> => {
+          await new Promise(r => setTimeout(r, 4000));
+          const state = await api.pipeline.getStage(projectId);
+          if (state.current_step === "render_done" || (state.image_urls?.length ?? 0) > 0) {
+            const ts = Date.now();
+            setStage(prev => ({
+              ...prev,
+              current_step: "render_done",
+              image_urls: (state.image_urls as string[]).map((u: string) => `${u}?t=${ts}`),
+              thumbnail_url: state.thumbnail_url ?? prev.thumbnail_url,
+            }));
+            return;
+          }
+          if (state.current_step === "render_failed") {
+            throw new Error("이미지 생성 실패 (Celery)");
+          }
+          return poll();
+        };
+        await poll();
+      } else {
+        // 동기 모드(인라인): 결과 바로 반환
+        setStage(prev => ({
+          ...prev,
+          current_step: "render_done",
+          image_urls: (res.image_urls as string[]).map((u: string) => `${u}?t=${Date.now()}`),
+          thumbnail_url: res.thumbnail_url ?? prev.thumbnail_url,
+        }));
+      }
       await loadProject();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "이미지 생성 실패");
     } finally {
+      stepTimers.forEach(clearTimeout);
       setLoading(null);
+      setImageStep("");
     }
   };
 
@@ -926,7 +969,7 @@ export default function ProjectDetailPage() {
                   </Button>
                   {currentStepIdx < 4 && (
                     <Button size="sm" onClick={() => runRender(videoPlatform)} disabled={!!loading}>
-                      {loading === "render" ? "씬 이미지 생성 중..." : "씬 이미지 생성 →"}
+                      {loading === "render" ? (imageStep || "씬 이미지 생성 중...") : "씬 이미지 생성 →"}
                     </Button>
                   )}
                 </div>
@@ -1135,7 +1178,7 @@ export default function ProjectDetailPage() {
                     disabled={!!loading}
                     variant="outline"
                   >
-                    {loading === "render" ? "재생성 중..." : "전체 이미지 재생성"}
+                    {loading === "render" ? (imageStep || "재생성 중...") : "전체 이미지 재생성"}
                   </Button>
                 </div>
               ) : (
@@ -1153,8 +1196,11 @@ export default function ProjectDetailPage() {
                     ))}
                   </div>
                   <Button onClick={() => runRender(videoPlatform)} disabled={!!loading}>
-                    {loading === "render" ? "이미지 생성 중... (슬라이드당 5~10초)" : "🖼️ 씬 이미지 생성"}
+                    {loading === "render" ? (imageStep || "씬 이미지 생성 중...") : "🖼️ 씬 이미지 생성"}
                   </Button>
+                  {loading === "render" && imageStep && (
+                    <div className="text-xs text-muted-foreground animate-pulse">{imageStep}</div>
+                  )}
                 </div>
               );
             })()}
